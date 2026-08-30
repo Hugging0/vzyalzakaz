@@ -1,0 +1,25 @@
+projects:
+  - slug: ai-lead-automation
+    title: AI Lead Automation
+    description: Автоматизация обработки лидов между CRM, Telegram, LLM и webhook-интеграциями.
+    skills: [CRM, Telegram, LLM, webhooks, n8n, Make, automation, API]
+    url:
+
+  - slug: company-knowledge-assistant
+    title: Company Knowledge Assistant
+    description: Ассистент по внутренним документам с поиском, RAG и контролируемыми ответами.
+    skills: [RAG, documents, AI assistant, embeddings, LLM API, FastAPI, PostgreSQL]
+    url:
+
+  - slug: automated-reporting-agent
+    title: Automated Reporting Agent
+    description: Python-сервис для сбора данных по API и автоматической подготовки отчётов.
+    skills: [Python, automation, API, analytics, reports, SQL, PostgreSQL]
+    url:
+
+  - slug: telegram-service-bot
+    title: Telegram Service Bot
+    description: Telegram-бот с внешними API, webhook-обработчиками и PostgreSQL.
+    skills: [Python, Telegram Bots, FastAPI, REST API, webhooks, PostgreSQL]
+    url:
+

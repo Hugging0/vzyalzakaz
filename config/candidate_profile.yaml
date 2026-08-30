@@ -1,0 +1,63 @@
+candidate:
+  name: "Александр"
+  languages: [ru, en, fa]
+  about: >-
+    Разрабатываю прикладные Python-сервисы, API-интеграции, Telegram-ботов и
+    AI-автоматизации. Предпочитаю прозрачный поэтапный запуск с быстрым MVP.
+  skills:
+    - Python
+    - FastAPI
+    - PostgreSQL
+    - SQL
+    - Linux
+    - Docker
+    - REST API
+    - Webhooks
+    - Telegram Bots
+    - AI Agents
+    - LLM API
+    - RAG
+    - n8n
+    - Make
+    - automation
+    - Codex
+    - AI-assisted development
+  secondary_skills:
+    - AI video
+    - Seedance
+    - Higgsfield
+    - CapCut
+
+availability:
+  max_hours_week: 15
+  weekdays_hours: 2
+  weekend_hours: 5
+
+preferred:
+  remote: true
+  freelance: true
+  project: true
+  fixed_price: true
+  contract: true
+  part_time: true
+  asynchronous: true
+
+avoid:
+  full_time: true
+  office: true
+  relocation: true
+  daily_daytime_calls: true
+  coursework: true
+
+economics:
+  minimum_project_rub: 10000
+  target_hourly_rub: 2000
+
+ranking:
+  fit_weight: 0.40
+  money_weight: 0.25
+  win_weight: 0.25
+  freshness_weight: 0.10
+  realtime_threshold: 82
+  digest_threshold: 70
+

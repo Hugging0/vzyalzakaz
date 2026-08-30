@@ -1,0 +1,1 @@
+"""Core opportunity processing services."""

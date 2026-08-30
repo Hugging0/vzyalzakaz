@@ -1,0 +1,95 @@
+sources:
+  # Telegram Tier A
+  - {name: telegram_python_jobs, type: telegram, language: ru, priority: tier_a, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@python_jobs", options: {backfill_limit: 30}}
+  - {name: telegram_job_python, type: telegram, language: ru, priority: tier_a, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@job_python", options: {backfill_limit: 30}}
+  - {name: telegram_itfreelancers, type: telegram, language: multi, priority: tier_a, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@itfreelancers", options: {backfill_limit: 30}}
+  - {name: telegram_datasciencejobs, type: telegram, language: ru, priority: tier_a, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@datasciencejobs", options: {backfill_limit: 30}}
+  - {name: telegram_hr_itwork, type: telegram, language: ru, priority: tier_a, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@hr_itwork", options: {backfill_limit: 30}}
+  - {name: telegram_remote_python_jobs, type: telegram, language: en, priority: tier_a, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@remote_python_jobs", options: {backfill_limit: 30}}
+  - {name: telegram_remote_ai_jobs, type: telegram, language: en, priority: tier_a, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@remote_ai_jobs", options: {backfill_limit: 30}}
+  - {name: telegram_it_remote_projects, type: telegram, language: multi, priority: tier_a, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@IT_REMOTE_PROJECTS", options: {backfill_limit: 30}}
+  - {name: telegram_doorkaari, type: telegram, language: fa, priority: tier_a, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@doorkaari", options: {backfill_limit: 30}}
+
+  # Telegram Tier B
+  - {name: telegram_devops_jobs_feed, type: telegram, language: ru, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@devops_jobs_feed", options: {backfill_limit: 15}}
+  - {name: telegram_devops_jobs, type: telegram, language: ru, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@devops_jobs", options: {backfill_limit: 15}}
+  - {name: telegram_jobs_in_it_remoute, type: telegram, language: ru, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@jobs_in_it_remoute", options: {backfill_limit: 15}}
+  - {name: telegram_devs_it, type: telegram, language: ru, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@devs_it", options: {backfill_limit: 15}}
+  - {name: telegram_itposition, type: telegram, language: ru, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@itposition", options: {backfill_limit: 15}}
+  - {name: telegram_refer_me_it, type: telegram, language: ru, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@refer_me_it", options: {backfill_limit: 15}}
+  - {name: telegram_vakansii, type: telegram, language: ru, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@vakansii", options: {backfill_limit: 15}}
+  - {name: telegram_vacancies_in_english, type: telegram, language: en, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@vacancies_in_english", options: {backfill_limit: 15}}
+  - {name: telegram_remote_devops_jobs, type: telegram, language: en, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@remote_devops_jobs", options: {backfill_limit: 15}}
+  - {name: telegram_remotejobs, type: telegram, language: en, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@remotejobs", options: {backfill_limit: 15}}
+  - {name: telegram_remotejobss, type: telegram, language: en, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@remotejobss", options: {backfill_limit: 15}}
+  - {name: telegram_remoters, type: telegram, language: en, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@remoters", options: {backfill_limit: 15}}
+  - {name: telegram_ai_india_jobs, type: telegram, language: en, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@AiIndiaJobs", options: {backfill_limit: 15}}
+  - {name: telegram_dev_jobs_daily, type: telegram, language: en, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@DevJobsDaily", options: {backfill_limit: 15}}
+  - {name: telegram_freelancer_projects, type: telegram, language: fa, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@freelancer_projects", options: {backfill_limit: 15}}
+  - {name: telegram_project_board, type: telegram, language: fa, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@Project_board", options: {backfill_limit: 15}}
+  - {name: telegram_freelancer_news, type: telegram, language: fa, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@Freelancer_news", options: {backfill_limit: 15}}
+  - {name: telegram_freelance_ethio, type: telegram, language: en, priority: tier_c, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@freelance_ethio", options: {backfill_limit: 10}}
+
+  # Public API / lightweight web adapters. Automated application is disabled.
+  - name: hh_ru
+    type: api
+    language: ru
+    priority: tier_a
+    enabled: false
+    collector: hh
+    apply_mode: draft_only
+    poll_interval: 900
+    url: https://api.hh.ru/vacancies
+    options: {query: "Python OR FastAPI OR автоматизация OR LLM", limit: 50}
+
+  - name: remotive
+    type: api
+    language: en
+    priority: tier_a
+    enabled: true
+    collector: remotive
+    apply_mode: draft_only
+    poll_interval: 900
+    url: https://remotive.com/api/remote-jobs
+    options: {query: "python automation"}
+
+  - name: remoteok
+    type: api
+    language: en
+    priority: tier_b
+    enabled: true
+    collector: remoteok
+    apply_mode: draft_only
+    poll_interval: 1800
+    url: https://remoteok.com/api
+
+  - name: arbeitnow
+    type: api
+    language: en
+    priority: tier_b
+    enabled: true
+    collector: arbeitnow
+    apply_mode: draft_only
+    poll_interval: 1800
+    url: https://www.arbeitnow.com/api/job-board-api
+
+  - name: hackernews
+    type: web
+    language: en
+    priority: tier_c
+    enabled: true
+    collector: hackernews
+    apply_mode: draft_only
+    poll_interval: 21600
+    url: https://hn.algolia.com/api/v1/search_by_date
+    options: {query: "Ask HN: Who is hiring?"}
+
+  - name: weworkremotely
+    type: rss
+    language: en
+    priority: tier_b
+    enabled: true
+    collector: weworkremotely
+    apply_mode: draft_only
+    poll_interval: 3600
+    url: https://weworkremotely.com/categories/remote-programming-jobs.rss
