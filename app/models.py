@@ -38,6 +38,13 @@ class OpportunityStatus(StrEnum):
     LOST = "lost"
 
 
+class PaymentStatus(StrEnum):
+    PENDING = "pending"
+    WAITING_FOR_CAPTURE = "waiting_for_capture"
+    SUCCEEDED = "succeeded"
+    CANCELED = "canceled"
+
+
 class Opportunity(Base):
     __tablename__ = "opportunities"
 
@@ -203,4 +210,28 @@ class UserOpportunity(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "opportunity_id", name="uq_user_opportunity"),
         Index("ix_user_opportunity_status_score", "user_id", "status", "final_score"),
+    )
+
+
+class Payment(Base):
+    __tablename__ = "payments"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("telegram_users.id", ondelete="CASCADE"), index=True
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    provider_payment_id: Mapped[str | None] = mapped_column(String(100), unique=True, index=True)
+    plan_code: Mapped[str] = mapped_column(String(50))
+    amount_rub: Mapped[str] = mapped_column(String(20))
+    status: Mapped[PaymentStatus] = mapped_column(
+        Enum(PaymentStatus, native_enum=False), default=PaymentStatus.PENDING, index=True
+    )
+    confirmation_url: Mapped[str | None] = mapped_column(Text)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )

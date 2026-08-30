@@ -91,6 +91,13 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .choice-chip { min-height: 38px; border: 1px solid var(--border); border-radius: 10px; padding: 0 10px; color: var(--ink-secondary); background: var(--surface-subtle); font-size: 13px; font-weight: 600; }
 .choice-chip[data-selected="true"] { color: var(--brand); border-color: var(--signal); background: var(--signal-soft); }
 .compact-editor { min-height: 110px; margin: 0 0 14px; }
+.billing-card { background: linear-gradient(145deg, var(--surface), var(--signal-soft)); }
+.billing-eyebrow { display: inline-flex; align-items: center; gap: 5px; color: var(--brand); font-size: 12px; font-weight: 750; }
+.billing-benefits { display: grid; gap: 7px; margin: 14px 0; padding: 0; list-style: none; color: var(--ink-secondary); font-size: 14px; }
+.billing-benefits li { display: flex; align-items: center; gap: 7px; }
+.billing-benefits svg { color: var(--signal); }
+.billing-actions { display: flex; gap: 8px; align-items: center; }
+.billing-actions .app-button:first-child { flex: 1; }
 .metric-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 .metric-value { font-size: 25px; font-weight: 750; letter-spacing: -0.04em; }
 .lead-card h2 { margin: 12px 0 4px; font-size: 16px; line-height: 1.3; letter-spacing: -0.01em; }

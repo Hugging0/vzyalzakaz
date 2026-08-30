@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -119,6 +120,11 @@ class AppSettings(BaseSettings):
     allow_dev_auth: bool = False
     dev_telegram_user_id: int | None = None
 
+    public_base_url: str | None = None
+    yookassa_shop_id: str | None = None
+    yookassa_secret_key: str | None = None
+    billing_pro_monthly_price_rub: Decimal = Decimal("990.00")
+
     @field_validator("telegram_api_id", "telegram_owner_id", "dev_telegram_user_id", mode="before")
     @classmethod
     def empty_optional_integer(cls, value):
@@ -131,6 +137,10 @@ class AppSettings(BaseSettings):
     @property
     def telegram_bot_ready(self) -> bool:
         return bool(self.telegram_bot_token)
+
+    @property
+    def yookassa_ready(self) -> bool:
+        return bool(self.yookassa_shop_id and self.yookassa_secret_key and self.public_base_url)
 
     def load_profile(self) -> CandidateProfile:
         return CandidateProfile.model_validate(_read_yaml(self.config_dir / "candidate_profile.yaml"))

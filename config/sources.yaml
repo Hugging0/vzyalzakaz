@@ -30,6 +30,14 @@ sources:
   - {name: telegram_freelancer_news, type: telegram, language: fa, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@Freelancer_news", options: {backfill_limit: 15}}
   - {name: telegram_freelance_ethio, type: telegram, language: en, priority: tier_c, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@freelance_ethio", options: {backfill_limit: 10}}
 
+  # Telegram: digital, SMM, video, motion and CG. All are review-only.
+  - {name: telegram_smm_vacancies, type: telegram, language: ru, priority: tier_a, enabled: true, collector: telethon, apply_mode: draft_only, poll_interval: 0, channel: "@vacancysmm", options: {backfill_limit: 30}}
+  - {name: telegram_digital_smm, type: telegram, language: ru, priority: tier_a, enabled: true, collector: telethon, apply_mode: draft_only, poll_interval: 0, channel: "@vakanser_digital_smm", options: {backfill_limit: 30}}
+  - {name: telegram_designodromo, type: telegram, language: ru, priority: tier_b, enabled: true, collector: telethon, apply_mode: draft_only, poll_interval: 0, channel: "@designodromo", options: {backfill_limit: 15}}
+  - {name: telegram_motionhunter, type: telegram, language: ru, priority: tier_b, enabled: true, collector: telethon, apply_mode: draft_only, poll_interval: 0, channel: "@motionhunter", options: {backfill_limit: 15}}
+  - {name: telegram_cgfreelance, type: telegram, language: ru, priority: tier_b, enabled: true, collector: telethon, apply_mode: draft_only, poll_interval: 0, channel: "@cgfreelance", options: {backfill_limit: 15}}
+  - {name: telegram_general_freelance, type: telegram, language: ru, priority: tier_c, enabled: true, collector: telethon, apply_mode: draft_only, poll_interval: 0, channel: "@frilans", options: {backfill_limit: 10}}
+
   # Public API / lightweight web adapters. Automated application is disabled.
   - name: hh_ru
     type: api
@@ -51,7 +59,40 @@ sources:
     apply_mode: draft_only
     poll_interval: 900
     url: https://remotive.com/api/remote-jobs
-    options: {query: "python automation"}
+    options: {query: "python automation", limit: 30}
+
+  - name: remotive_design
+    type: api
+    language: en
+    priority: tier_a
+    enabled: true
+    collector: remotive
+    apply_mode: draft_only
+    poll_interval: 21600
+    url: https://remotive.com/api/remote-jobs
+    options: {category: design, limit: 30}
+
+  - name: remotive_marketing
+    type: api
+    language: en
+    priority: tier_a
+    enabled: true
+    collector: remotive
+    apply_mode: draft_only
+    poll_interval: 21600
+    url: https://remotive.com/api/remote-jobs
+    options: {category: marketing, limit: 30}
+
+  - name: remotive_writing
+    type: api
+    language: en
+    priority: tier_b
+    enabled: true
+    collector: remotive
+    apply_mode: draft_only
+    poll_interval: 21600
+    url: https://remotive.com/api/remote-jobs
+    options: {category: writing, limit: 30}
 
   - name: remoteok
     type: api
@@ -93,3 +134,56 @@ sources:
     apply_mode: draft_only
     poll_interval: 3600
     url: https://weworkremotely.com/categories/remote-programming-jobs.rss
+
+  - name: weworkremotely_design
+    type: rss
+    language: en
+    priority: tier_a
+    enabled: true
+    collector: weworkremotely
+    apply_mode: draft_only
+    poll_interval: 3600
+    url: https://weworkremotely.com/categories/remote-design-jobs.rss
+
+  - name: weworkremotely_marketing
+    type: rss
+    language: en
+    priority: tier_a
+    enabled: true
+    collector: weworkremotely
+    apply_mode: draft_only
+    poll_interval: 3600
+    url: https://weworkremotely.com/categories/remote-sales-and-marketing-jobs.rss
+
+  - name: jobicy_marketing
+    type: api
+    language: en
+    priority: tier_a
+    enabled: true
+    collector: jobicy
+    apply_mode: draft_only
+    poll_interval: 21600
+    url: https://jobicy.com/api/v2/remote-jobs
+    options: {industry: marketing, limit: 30}
+
+  - name: jobicy_design_multimedia
+    type: api
+    language: en
+    priority: tier_a
+    enabled: true
+    collector: jobicy
+    apply_mode: draft_only
+    poll_interval: 21600
+    url: https://jobicy.com/api/v2/remote-jobs
+    options: {industry: design-multimedia, limit: 30}
+
+  - name: jobicy_copywriting
+    type: api
+    language: en
+    priority: tier_b
+    enabled: true
+    collector: jobicy
+    apply_mode: draft_only
+    poll_interval: 21600
+    url: https://jobicy.com/api/v2/remote-jobs
+    options: {industry: copywriting, limit: 30}

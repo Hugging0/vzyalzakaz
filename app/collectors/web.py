@@ -71,9 +71,14 @@ class HHSource(JobSource):
 
 class RemotiveSource(JobSource):
     async def fetch_new(self) -> list[RawOpportunity]:
+        params = {"limit": self.config.options.get("limit", 100)}
+        if query := self.config.options.get("query"):
+            params["search"] = query
+        if category := self.config.options.get("category"):
+            params["category"] = category
         data = await self.get_json(
             self.config.url or "https://remotive.com/api/remote-jobs",
-            params={"search": self.config.options.get("query", "python automation")},
+            params=params,
         )
         jobs = data.get("jobs", []) if isinstance(data, dict) else []
         return [
@@ -170,7 +175,10 @@ class HackerNewsSource(JobSource):
             if not body:
                 continue
             normalized = body.lower()
-            if not any(word in normalized for word in ("python", "ai", "llm", "automation")):
+            keywords = self.config.options.get(
+                "keywords", ["python", "ai", "llm", "automation"]
+            )
+            if not any(word.lower() in normalized for word in keywords):
                 continue
             object_id = str(hit.get("id"))
             results.append(
@@ -228,12 +236,45 @@ class WeWorkRemotelySource(JobSource):
         return results
 
 
+class JobicySource(JobSource):
+    async def fetch_new(self) -> list[RawOpportunity]:
+        params = {"count": self.config.options.get("limit", 100)}
+        for key in ("industry", "geo", "tag"):
+            if value := self.config.options.get(key):
+                params[key] = value
+        data = await self.get_json(
+            self.config.url or "https://jobicy.com/api/v2/remote-jobs", params=params
+        )
+        jobs = data.get("jobs", []) if isinstance(data, dict) else []
+        return [
+            RawOpportunity(
+                source=self.config.name,
+                source_type="api",
+                external_id=str(job.get("id") or job.get("jobSlug")),
+                title=job.get("jobTitle", ""),
+                description=_text(job.get("jobDescription") or job.get("jobExcerpt")),
+                raw_text=f"{job.get('jobTitle', '')}\n{_text(job.get('jobDescription'))}",
+                source_url=job.get("url"),
+                company=job.get("companyName"),
+                employment_type=", ".join(job.get("jobType") or []),
+                remote=True,
+                country=job.get("jobGeo"),
+                skills=job.get("jobIndustry") or [],
+                published_at=_date(job.get("pubDate")),
+                apply_mode=self.config.apply_mode,
+            )
+            for job in jobs
+            if isinstance(job, dict) and (job.get("id") or job.get("jobSlug"))
+        ]
+
+
 COLLECTOR_REGISTRY: dict[str, type[JobSource]] = {
     "hh": HHSource,
     "remotive": RemotiveSource,
     "remoteok": RemoteOKSource,
     "arbeitnow": ArbeitnowSource,
     "hackernews": HackerNewsSource,
+    "jobicy": JobicySource,
     "weworkremotely": WeWorkRemotelySource,
 }
 

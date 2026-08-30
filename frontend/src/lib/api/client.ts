@@ -1,4 +1,4 @@
-import type { PersonalAnalytics, PortfolioCase, Profile } from "@/types/domain";
+import type { BillingStatus, PersonalAnalytics, PortfolioCase, Profile } from "@/types/domain";
 
 const sessionKey = "hunt-agent-session";
 
@@ -36,4 +36,7 @@ export const miniAppApi = {
   portfolio: () => request<PortfolioCase[]>("/api/app/portfolio"),
   addPortfolio: (item: Omit<PortfolioCase, "slug">) => request<PortfolioCase>("/api/app/portfolio", { method: "POST", body: JSON.stringify(item) }),
   setAgentActive: (isActive: boolean) => request<Profile>("/api/app/agent", { method: "PATCH", body: JSON.stringify({ is_active: isActive }) }),
+  billing: () => request<BillingStatus>("/api/app/billing"),
+  createCheckout: (idempotencyKey: string) => request<BillingStatus>("/api/app/billing/checkout", { method: "POST", headers: { "Idempotency-Key": idempotencyKey } }),
+  refreshBilling: () => request<BillingStatus>("/api/app/billing/refresh", { method: "POST" }),
 };

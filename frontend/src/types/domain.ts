@@ -35,3 +35,13 @@ export interface Profile {
 export interface PortfolioCase { slug: string; title: string; description: string; skills: string[]; url: string | null; }
 
 export interface PersonalAnalytics { relevant: number; approved: number; sent: number; replied: number; won: number; }
+
+export interface BillingStatus {
+  available: boolean;
+  checkout_available: boolean;
+  status: "pending" | "waiting_for_capture" | "succeeded" | "canceled" | null;
+  plan: string | null;
+  amount_rub?: string;
+  confirmation_url?: string | null;
+  active_until: string | null;
+}

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { AppButton } from "@/components/ui/AppButton";
 import { AppCard } from "@/components/ui/AppCard";
 import { AppNotice } from "@/components/ui/AppNotice";
+import { BillingCard } from "@/components/features/billing/BillingCard";
 import { miniAppApi } from "@/lib/api/client";
 import type { Profile } from "@/types/domain";
 
@@ -23,5 +24,6 @@ export function ProfileView({ profile }: { profile: Profile }) {
     <AppNotice tone="neutral">Режим по умолчанию — проверка перед отправкой. Автопилот появится только для источников, где безопасная отправка реально поддерживается.</AppNotice>
     <SkillEditor profile={profile} />
     <AppCard><h2>Портфолио</h2>{portfolio.data?.length ? <ul className="list-reset portfolio-list">{portfolio.data.map((item) => <li key={item.slug}><strong>{item.title}</strong><span>{item.skills.join(", ")}</span></li>)}</ul> : <p className="small muted">Добавьте кейс — это поможет подобрать сильный пример для отклика.</p>}<div className="add-case"><input className="app-input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Название кейса" /><AppButton variant="ghost" aria-label="Добавить кейс" disabled={!title || addCase.isPending} onClick={() => addCase.mutate()}><Plus size={18} /></AppButton></div></AppCard>
+    <BillingCard />
   </div></>;
 }

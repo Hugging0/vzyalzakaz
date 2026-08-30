@@ -12,7 +12,7 @@ Self-hosted агент, который собирает вакансии и пр
 
 - Telethon/MTProto: realtime-сообщения, изменения и первоначальный backfill из 27 каналов;
 - шесть публичных web/API/RSS-адаптеров: HH.ru, Remotive, Remote OK, Arbeitnow,
-  Hacker News и We Work Remotely;
+  Hacker News, We Work Remotely и Jobicy;
 - PostgreSQL + SQLAlchemy 2 + Alembic;
 - exact- и content-дедупликация с сохранением всех источников репоста;
 - быстрый rule-based prefilter на русском, английском и фарси;
@@ -26,6 +26,7 @@ Self-hosted агент, который собирает вакансии и пр
   черновика, воронка, статистика, профиль и portfolio;
 - серверная проверка подписи Telegram `initData` и подписанная app-сессия;
 - Nginx reverse proxy: единый адрес для Mini App и API;
+- тестовый checkout ЮKassa с idempotency, webhook-проверкой и ручным refresh статуса;
 - `APPROVE` создаёт черновик и открывает контакт — отправка остаётся ручной;
 - аналитика через `/stats` в боте и `GET /api/analytics`;
 - Docker Compose и тесты.
@@ -156,6 +157,39 @@ LLM_MODEL=deepseek/deepseek-chat
 `LLM_BASE_URL` обычно оставляют пустым. Ответ модели валидируется строгой Pydantic
 схемой. При timeout, невалидном JSON или ошибке API конкретная вакансия получает
 локальную оценку, а pipeline продолжает работу.
+
+## Источники для digital-специалистов
+
+Помимо developer-каналов конфигурация включает review-only Telegram-источники:
+`@vacancysmm`, `@vakanser_digital_smm`, `@designodromo`, `@motionhunter`,
+`@cgfreelance` и `@frilans`. Они покрывают SMM, контент, дизайн, video editing,
+motion, CG и широкий фриланс. Перед включением MTProto collector должен иметь
+доступ к каждому каналу; недоступный канал не останавливает сервис.
+
+Для международных remote-проектов добавлены категории Design, Marketing и Writing
+из Remotive, Design и Sales/Marketing RSS из We Work Remotely, а также Jobicy
+для Marketing, Design & Multimedia и Copywriting. Новые источники опрашиваются
+не чаще четырёх раз в сутки, а API-выдача ограничена 30 лидами за проход, чтобы
+не расходовать бюджет на анализ шума.
+
+## Тестовая оплата ЮKassa
+
+Checkout запускается в разделе «Профиль» Mini App. Все запросы идут только с
+backend: frontend получает исключительно URL подтверждения. Для локального теста
+заполните `.env`:
+
+```dotenv
+PUBLIC_BASE_URL=http://localhost:8010
+YOOKASSA_SHOP_ID=...
+YOOKASSA_SECRET_KEY=...
+BILLING_PRO_MONTHLY_PRICE_RUB=990.00
+```
+
+После возврата из ЮKassa Mini App запрашивает статус повторно. Webhook
+`POST /api/webhooks/yookassa` дополнительно сверяет платёж через API ЮKassa,
+а не доверяет входящему JSON. Для production достаточно подставить production
+credentials, production HTTPS `PUBLIC_BASE_URL`, назначить webhook в кабинете
+ЮKassa и определить реальные тарифы.
 
 ## Настройка пользователей через Telegram
 

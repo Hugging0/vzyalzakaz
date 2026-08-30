@@ -4,7 +4,7 @@ import re
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import AliasChoices, BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import AppSettings, CandidateProfile, PortfolioProject
 from app.database import get_session
 from app.mini_app_auth import create_session_token, current_mini_app_user, validate_init_data
-from app.models import Opportunity, OpportunityStatus, TelegramUser, UserOpportunity
+from app.models import Opportunity, OpportunityStatus, Payment, TelegramUser, UserOpportunity
+from app.services.payments import YooKassaService, payment_payload
 
 router = APIRouter(prefix="/api")
 CurrentUser = Annotated[TelegramUser, Depends(current_mini_app_user)]
@@ -55,6 +56,11 @@ class PortfolioCreate(BaseModel):
     description: str = Field(min_length=1, max_length=1_500)
     skills: list[str] = Field(default_factory=list, max_length=50)
     url: str | None = Field(default=None, max_length=2_000)
+
+
+class YooKassaWebhook(BaseModel):
+    event: str
+    object: dict
 
 
 def _profile_payload(user: TelegramUser) -> dict:
@@ -300,6 +306,67 @@ async def set_agent_active(
     await session.commit()
     await session.refresh(db_user)
     return _profile_payload(db_user)
+
+
+@router.get("/app/billing")
+async def billing_status(
+    request: Request, user: CurrentUser, session: AsyncSession = Depends(get_session)
+) -> dict:
+    payment = await session.scalar(
+        select(Payment)
+        .where(Payment.user_id == user.id)
+        .order_by(Payment.created_at.desc())
+        .limit(1)
+    )
+    payload = payment_payload(payment)
+    payload["checkout_available"] = request.app.state.runtime.settings.yookassa_ready
+    return payload
+
+
+@router.post("/app/billing/checkout")
+async def create_checkout(
+    request: Request,
+    user: CurrentUser,
+    idempotency_key: str = Header(..., alias="Idempotency-Key", min_length=16, max_length=255),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    payment = await YooKassaService(request.app.state.runtime.settings).create_payment(
+        session, user, idempotency_key
+    )
+    return payment_payload(payment)
+
+
+@router.post("/app/billing/refresh")
+async def refresh_billing(
+    request: Request, user: CurrentUser, session: AsyncSession = Depends(get_session)
+) -> dict:
+    payment = await session.scalar(
+        select(Payment)
+        .where(Payment.user_id == user.id)
+        .order_by(Payment.created_at.desc())
+        .limit(1)
+    )
+    if not payment:
+        return payment_payload(None)
+    refreshed = await YooKassaService(request.app.state.runtime.settings).refresh_payment(session, payment)
+    return payment_payload(refreshed)
+
+
+@router.post("/webhooks/yookassa", status_code=200)
+async def yookassa_webhook(
+    payload: YooKassaWebhook,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    provider_payment_id = payload.object.get("id")
+    if not isinstance(provider_payment_id, str):
+        raise HTTPException(400, "YooKassa payment id is missing")
+    payment = await session.scalar(
+        select(Payment).where(Payment.provider_payment_id == provider_payment_id)
+    )
+    if payment:
+        await YooKassaService(request.app.state.runtime.settings).refresh_payment(session, payment)
+    return {"ok": True}
 
 
 def _clean_values(values: list[str], maximum: int) -> list[str]:
