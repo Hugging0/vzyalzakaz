@@ -4,9 +4,10 @@ import asyncio
 import html
 import logging
 import re
+import socket
 from datetime import UTC, datetime
 
-import httpx
+import aiohttp
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -503,16 +504,22 @@ class TelegramBot:
         await self._api("answerCallbackQuery", payload)
 
     async def _api(self, method: str, payload: dict, timeout: int = 20):
+        async def request_once(client: aiohttp.ClientSession) -> tuple[int, dict]:
+            async with client.post(f"{self.base_url}/{method}", json=payload) as response:
+                return response.status, await response.json(content_type=None)
+
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.post(f"{self.base_url}/{method}", json=payload)
-                if response.status_code == 429:
-                    retry_after = response.json().get("parameters", {}).get("retry_after", 1)
+            client_timeout = aiohttp.ClientTimeout(total=timeout)
+            connector = aiohttp.TCPConnector(family=socket.AF_INET)
+            async with aiohttp.ClientSession(timeout=client_timeout, connector=connector) as client:
+                status, body = await request_once(client)
+                if status == 429:
+                    retry_after = body.get("parameters", {}).get("retry_after", 1)
                     await asyncio.sleep(min(int(retry_after), 10))
-                    response = await client.post(f"{self.base_url}/{method}", json=payload)
-                response.raise_for_status()
-                body = response.json()
-        except (httpx.HTTPError, ValueError) as exc:
+                    status, body = await request_once(client)
+                if status >= 400:
+                    raise RuntimeError(f"Telegram Bot API request failed for {method}: HTTP {status}")
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as exc:
             error_type = type(exc).__name__
             raise RuntimeError(f"Telegram Bot API request failed for {method}: {error_type}") from None
         if not body.get("ok"):

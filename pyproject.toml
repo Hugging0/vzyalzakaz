@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Self-hosted AI assistant for finding and ranking freelance opportunities"
 requires-python = ">=3.12"
 dependencies = [
+  "aiohttp>=3.10,<4",
   "aiosqlite>=0.20,<1",
   "alembic>=1.14,<2",
   "apscheduler>=3.11,<4",

@@ -6,10 +6,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Some VPS networks advertise IPv6 in DNS without providing an IPv6 route.
-# Prefer IPv4 so HTTP clients can reliably reach Telegram and public job APIs.
-RUN printf 'precedence ::ffff:0:0/96 100\n' >> /etc/gai.conf
-
 COPY pyproject.toml ./
 COPY app ./app
 RUN pip install --upgrade pip && pip install .
