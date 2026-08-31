@@ -54,7 +54,8 @@ sources:
     type: api
     language: en
     priority: tier_a
-    enabled: true
+    # Remotive currently returns HTTP 403 from the production VPS. Re-enable after access is restored.
+    enabled: false
     collector: remotive
     apply_mode: draft_only
     poll_interval: 900
@@ -65,7 +66,7 @@ sources:
     type: api
     language: en
     priority: tier_a
-    enabled: true
+    enabled: false
     collector: remotive
     apply_mode: draft_only
     poll_interval: 21600
@@ -76,7 +77,7 @@ sources:
     type: api
     language: en
     priority: tier_a
-    enabled: true
+    enabled: false
     collector: remotive
     apply_mode: draft_only
     poll_interval: 21600
@@ -87,7 +88,7 @@ sources:
     type: api
     language: en
     priority: tier_b
-    enabled: true
+    enabled: false
     collector: remotive
     apply_mode: draft_only
     poll_interval: 21600
@@ -108,7 +109,8 @@ sources:
     type: api
     language: en
     priority: tier_b
-    enabled: true
+    # Arbeitnow currently returns HTTP 403 from the production VPS. Re-enable after access is restored.
+    enabled: false
     collector: arbeitnow
     apply_mode: draft_only
     poll_interval: 1800
