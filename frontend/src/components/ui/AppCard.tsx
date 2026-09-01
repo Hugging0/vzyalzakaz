@@ -1,4 +1,5 @@
 import type { HTMLAttributes, ReactNode } from "react";
-export function AppCard({ children, className = "", ...props }: HTMLAttributes<HTMLElement> & { children: ReactNode }) {
-  return <section className={`app-card ${className}`} {...props}>{children}</section>;
+type Tone = "paper" | "pink" | "blue" | "yellow" | "mint" | "ink";
+export function AppCard({ children, className = "", tone = "paper", ...props }: HTMLAttributes<HTMLElement> & { children: ReactNode; tone?: Tone }) {
+  return <section className={`app-card app-card--${tone} ${className}`} {...props}>{children}</section>;
 }

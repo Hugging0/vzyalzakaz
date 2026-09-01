@@ -53,7 +53,7 @@ class Ranking(BaseModel):
     win_weight: float = 0.25
     freshness_weight: float = 0.10
     realtime_threshold: float = 82
-    digest_threshold: float = 70
+    digest_threshold: float = 60
 
 
 class CandidateProfile(BaseModel):
@@ -85,6 +85,9 @@ class PortfolioProject(BaseModel):
     description: str
     skills: list[str] = Field(default_factory=list)
     url: str | None = None
+    telegram_file_id: str | None = None
+    file_name: str | None = None
+    mime_type: str | None = None
 
 
 class AppSettings(BaseSettings):
@@ -103,10 +106,18 @@ class AppSettings(BaseSettings):
     llm_base_url: str | None = None
     llm_timeout_seconds: int = 45
 
+    voice_transcription_enabled: bool = True
+    voice_transcription_model: str = "base"
+    voice_transcription_cache_dir: Path = Path("/data/whisper")
+
     telegram_api_id: int | None = None
     telegram_api_hash: str | None = None
     telegram_phone: str | None = None
     telegram_session_path: str = "./data/jobhunter"
+    telegram_proxy_host: str | None = None
+    telegram_proxy_port: int = 1080
+    telegram_proxy_username: str | None = None
+    telegram_proxy_password: str | None = None
     telegram_bot_token: str | None = None
     telegram_owner_id: int | None = None
     mini_app_url: str | None = None

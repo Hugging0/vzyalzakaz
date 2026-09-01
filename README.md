@@ -105,6 +105,20 @@ TELEGRAM_API_HASH=...
 TELEGRAM_PHONE=+79990000000
 ```
 
+Если VPS не может напрямую подключиться к production MTProto DC, можно направить
+только пользовательский Telethon-клиент через приватный SOCKS5:
+
+```dotenv
+TELEGRAM_PROXY_HOST=proxy.example.com
+TELEGRAM_PROXY_PORT=1080
+TELEGRAM_PROXY_USERNAME=
+TELEGRAM_PROXY_PASSWORD=
+```
+
+Прокси без логина допустим только при firewall/IP allowlist для production VPS.
+Bot API, Mini App, база и LLM через этот прокси не маршрутизируются. Не используйте
+бесплатные публичные прокси и Telegram test DC: тестовая среда не содержит production-каналы.
+
 5. Запустите одноразовую команду авторизации из раздела выше. Если включена 2FA,
    команда отдельно запросит пароль; он не сохраняется приложением.
 

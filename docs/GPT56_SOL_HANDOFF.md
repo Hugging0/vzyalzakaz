@@ -1,5 +1,7 @@
 # Hunt Agent — handoff для GPT-5.6 Sol
 
+> UI contract: перед любым изменением frontend или Telegram UI полностью прочитать `PRODUCT.md`, `DESIGN.md` и `docs/FRONTEND_RULES.md`. Colorblock Studio — утверждённое направление; одноразовые UI-блоки и текст меньше 13px запрещены.
+
 > Актуально на 31 августа 2026. Этот документ самодостаточен: его можно дать
 > следующему агенту вместе с репозиторием. Секреты, токены, пароли и значения
 > `.env` намеренно не включены.
@@ -134,6 +136,9 @@ flowchart LR
   выдаёт подписанную сессию. `POST /mini-app/auth/dev` существует только для local dev.
 - Mini App cabinet: `/app/me`, `/app/leads`, proposal/skip/contacted, `/app/analytics`,
   `/app/portfolio`, `/app/agent`.
+- Персональная лента хранит совпадения от `60%`. Отдельный realtime-порог Telegram-
+  уведомлений настраивается пользователем в Mini App в диапазоне `60–95%` и по
+  умолчанию равен `82%`. Изменение только порога не запускает полный backfill.
 - Billing: `GET /app/billing`, checkout, refresh и `POST /webhooks/yookassa`.
 
 `app/mini_app_auth.py` обязан остаться единственной точкой доверия Telegram initData.
@@ -185,10 +190,9 @@ cd frontend && npm run typecheck && npm run lint && npm run build
 git diff --check
 ```
 
-Последний полный набор этих проверок до инфраструктурных/network коммитов прошёл
-(`17 passed`). Последние изменения `dbd4472` и `41ee2cc` дополнительно собраны локально
-и функционально проверены запросом Telegram API; при следующей feature прогнать полный
-набор снова.
+Последний полный набор этих проверок прошёл 1 сентября 2026 года: `23 passed`, Ruff,
+TypeScript, ESLint, production build и `git diff --check`. Production Bot API (`getMe`,
+`getWebhookInfo`, `getMyCommands`) и все восемь web collector runs проверены отдельно.
 
 ### VPS
 
@@ -301,4 +305,3 @@ dbd4472 fix: force IPv4 for Telegram API calls
 2. Private Git remote URL.
 3. MTProto credentials, если требуется чтение Telegram channels.
 4. Решение о тарифе и production YooKassa credentials, когда будет включаться оплата.
-

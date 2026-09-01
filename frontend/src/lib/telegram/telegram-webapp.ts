@@ -7,6 +7,7 @@ type TelegramWebApp = {
   viewportHeight?: number;
   ready?: () => void;
   expand?: () => void;
+  openTelegramLink?: (url: string) => void;
   HapticFeedback?: { notificationOccurred: (type: "success" | "warning" | "error") => void };
 };
 
@@ -21,5 +22,6 @@ export const telegramBridge = {
   getColorScheme: (): TelegramColorScheme => webApp()?.colorScheme ?? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"),
   getStartParam: () => webApp()?.initDataUnsafe?.start_param ?? null,
   getViewportHeight: () => webApp()?.viewportHeight,
+  openTelegramLink: (url: string) => webApp()?.openTelegramLink?.(url) ?? window.open(url, "_blank", "noopener,noreferrer"),
   hapticSuccess: () => webApp()?.HapticFeedback?.notificationOccurred("success"),
 };

@@ -5,7 +5,9 @@ import html
 import logging
 import re
 import socket
+import tempfile
 from datetime import UTC, datetime
+from pathlib import Path
 
 import aiohttp
 from sqlalchemy import func, select
@@ -13,16 +15,19 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.config import AppSettings, PortfolioProject
 from app.models import CollectorRun, Opportunity, OpportunityStatus, TelegramUser, UserOpportunity
+from app.services.portfolio_documents import extract_document_text
 from app.services.recommendations import RecommendationService
+from app.services.voice import VoiceTranscriber
+from app.telegram.ui import app_button, button
 
 logger = logging.getLogger(__name__)
 SKIP_REASONS = {
-    "skill": "irrelevant skill",
-    "work": "too much work",
-    "budget": "budget too low",
-    "fulltime": "full-time",
-    "client": "bad client",
-    "interest": "not interested",
+    "skill": "Не мой профиль",
+    "work": "Слишком объёмно",
+    "budget": "Низкий бюджет",
+    "fulltime": "Нужна полная занятость",
+    "client": "Не подходит заказчик",
+    "interest": "Неинтересно",
 }
 
 
@@ -38,21 +43,31 @@ class TelegramBot:
         self.recommendations = recommendations
         self.base_url = f"https://api.telegram.org/bot{settings.telegram_bot_token}"
         self._task: asyncio.Task | None = None
+        self._configure_task: asyncio.Task | None = None
         self._running = False
+        self._client: aiohttp.ClientSession | None = None
+        self._transcriber = VoiceTranscriber(settings)
 
     async def start(self) -> None:
         self._running = True
+        timeout = aiohttp.ClientTimeout(total=50, connect=15, sock_connect=15, sock_read=45)
+        connector = aiohttp.TCPConnector(family=socket.AF_INET, ttl_dns_cache=300)
+        self._client = aiohttp.ClientSession(timeout=timeout, connector=connector)
+        self._task = asyncio.create_task(self._poll(), name="telegram-bot-polling")
+        self._configure_task = asyncio.create_task(
+            self._configure(),
+            name="telegram-bot-configure",
+        )
+
+    async def _configure(self) -> None:
         try:
             await self._api(
                 "setMyCommands",
                 {
                     "commands": [
-                        {"command": "start", "description": "Начать работу"},
-                        {"command": "app", "description": "Открыть Hunt Agent"},
-                        {"command": "pause", "description": "Поставить агента на паузу"},
-                        {"command": "resume", "description": "Продолжить поиск"},
-                        {"command": "settings", "description": "Настройки поиска"},
-                        {"command": "help", "description": "Помощь"},
+                        {"command": "start", "description": "Открыть поиск проектов"},
+                        {"command": "app", "description": "Открыть кабинет"},
+                        {"command": "help", "description": "Как это работает"},
                     ]
                 },
             )
@@ -62,20 +77,25 @@ class TelegramBot:
                     {
                         "menu_button": {
                             "type": "web_app",
-                            "text": "Открыть Hunt Agent",
+                            "text": "Кабинет",
                             "web_app": {"url": self.settings.mini_app_url},
                         }
                     },
                 )
         except Exception:
             logger.exception("Cannot configure Telegram bot commands; polling will still start")
-        self._task = asyncio.create_task(self._poll(), name="telegram-bot-polling")
 
     async def stop(self) -> None:
         self._running = False
         if self._task:
             self._task.cancel()
             await asyncio.gather(self._task, return_exceptions=True)
+        if self._configure_task:
+            self._configure_task.cancel()
+            await asyncio.gather(self._configure_task, return_exceptions=True)
+        if self._client:
+            await self._client.close()
+            self._client = None
 
     async def notify(self, opportunity: Opportunity) -> None:
         """Fan out one global opportunity into isolated per-user recommendations."""
@@ -96,6 +116,7 @@ class TelegramBot:
 
     async def _poll(self) -> None:
         offset = 0
+        retry_delay = 2
         while self._running:
             try:
                 result = await self._api(
@@ -106,11 +127,13 @@ class TelegramBot:
                 for update in result:
                     offset = max(offset, update["update_id"] + 1)
                     await self._handle_update(update)
+                retry_delay = 2
             except asyncio.CancelledError:
                 raise
-            except Exception:
-                logger.exception("Telegram bot polling failed")
-                await asyncio.sleep(3)
+            except Exception as exc:
+                logger.warning("Telegram bot polling failed (%s); retrying", type(exc).__name__)
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, 20)
 
     async def _handle_update(self, update: dict) -> None:
         callback = update.get("callback_query")
@@ -144,41 +167,68 @@ class TelegramBot:
                 return
 
         if message:
-            await self._handle_command(user, text)
+            await self._handle_message(user, message)
         elif callback:
             await self._handle_callback(user, callback)
 
+    async def _handle_message(self, user: TelegramUser, message: dict) -> None:
+        text = (message.get("text") or "").strip()
+        if text.startswith("/"):
+            await self._handle_command(user, text)
+            return
+        if message.get("voice"):
+            await self._handle_voice(user, message["voice"])
+            return
+        if message.get("document"):
+            await self._handle_document(user, message["document"], message.get("caption", ""))
+            return
+        ui = (user.profile or {}).get("ui", {})
+        if text and (ui.get("intake_state") == "awaiting_about" or not ui.get("onboarding_completed")):
+            await self._complete_profile_from_text(user, text)
+            return
+        await self._send_message(
+            user.telegram_user_id,
+            "Выберите действие ниже. Профиль можно обновить обычным сообщением — без команд.",
+            self._home_keyboard(configured=True),
+        )
+
     async def _can_register(self, session, telegram_data: dict, text: str) -> bool:
-        if int(telegram_data["id"]) == self.settings.telegram_owner_id:
-            return True
-        count = await session.scalar(select(func.count()).select_from(TelegramUser)) or 0
-        if count >= self.settings.max_users:
-            return False
-        if self.settings.registration_mode == "open":
-            return True
-        if self.settings.registration_mode == "closed":
-            return False
         supplied = text.partition(" ")[2].strip()
-        return bool(
-            self.settings.registration_invite_code and supplied == self.settings.registration_invite_code
+        return await self.recommendations.can_register(
+            session,
+            int(telegram_data["id"]),
+            supplied or None,
         )
 
     async def _welcome(self, user: TelegramUser) -> None:
+        ui = (user.profile or {}).get("ui", {})
+        configured = bool(ui.get("onboarding_completed"))
         await self._send_message(
             user.telegram_user_id,
-            "<b>Профиль создан.</b> Я использовал безопасные стартовые настройки.\n\n"
-            "Теперь у каждого пользователя свои фильтры, оценки, статусы и отклики. "
-            "Начните с /profile, затем задайте навыки командой:\n"
-            "<code>/skills Python, FastAPI, PostgreSQL, AI Agents</code>\n\n"
-            "После настройки вызовите /digest.",
+            "<b>Проекты под ваш опыт</b>\n\n"
+            + (
+                "Поиск настроен. Отклики остаются под вашим контролем."
+                if configured
+                else (
+                    "Расскажите о себе одним сообщением — текстом или голосом. "
+                    "Портфолио можно добавить позже."
+                )
+            ),
+            self._home_keyboard(configured),
         )
 
     async def _handle_command(self, user: TelegramUser, text: str) -> None:
         command, _, value = text.partition(" ")
         command = command.lower().split("@")[0]
         value = value.strip()
-        if command in {"/start", "/help"}:
-            await self._send_message(user.telegram_user_id, _help_text())
+        if command == "/start":
+            await self._welcome(user)
+        elif command == "/help":
+            await self._send_message(
+                user.telegram_user_id,
+                _help_text(),
+                self._app_keyboard("Открыть кабинет"),
+            )
         elif command == "/app":
             await self._open_mini_app(user)
         elif command == "/settings":
@@ -194,7 +244,7 @@ class TelegramBot:
         elif command == "/rate":
             await self._update_number(user, value, "rate", 0, 1_000_000)
         elif command == "/threshold":
-            await self._update_number(user, value, "threshold", 0, 100)
+            await self._update_number(user, value, "threshold", 60, 95)
         elif command == "/about":
             await self._update_about(user, value)
         elif command == "/portfolio":
@@ -227,7 +277,7 @@ class TelegramBot:
                 profile.candidate.skills = values[:100]
             else:
                 profile.candidate.languages = values[:10]
-            db_user.profile = profile.model_dump()
+            db_user.profile = _profile_with_ui(db_user, profile)
             await self.recommendations.reset_recommendations(session, db_user)
         await self._send_message(
             user.telegram_user_id, "Настройка сохранена. Вызовите /digest для пересчёта."
@@ -252,9 +302,11 @@ class TelegramBot:
                 profile.economics.target_hourly_rub = number
             else:
                 profile.ranking.realtime_threshold = number
-                profile.ranking.digest_threshold = min(profile.ranking.digest_threshold, number)
-            db_user.profile = profile.model_dump()
-            await self.recommendations.reset_recommendations(session, db_user)
+            db_user.profile = _profile_with_ui(db_user, profile)
+            if field != "threshold":
+                await self.recommendations.reset_recommendations(session, db_user)
+            else:
+                await session.commit()
         await self._send_message(user.telegram_user_id, "Настройка сохранена. Вызовите /digest.")
 
     async def _update_about(self, user: TelegramUser, value: str) -> None:
@@ -265,7 +317,7 @@ class TelegramBot:
             db_user = await session.get(TelegramUser, user.id)
             profile = self.recommendations.profile_for(db_user)
             profile.candidate.about = value[:2000]
-            db_user.profile = profile.model_dump()
+            db_user.profile = _profile_with_ui(db_user, profile)
             await session.commit()
         await self._send_message(user.telegram_user_id, "Описание сохранено.")
 
@@ -317,9 +369,132 @@ class TelegramBot:
             return
         await self._send_message(
             user.telegram_user_id,
-            "Откройте кабинет Hunt Agent:",
-            [[{"text": "Открыть Hunt Agent", "web_app": {"url": self.settings.mini_app_url}}]],
+            "Лента, отклики и настройки — в кабинете.",
+            self._app_keyboard("Открыть кабинет"),
         )
+
+    def _app_keyboard(self, label: str) -> list | None:
+        if not self.settings.mini_app_url:
+            return None
+        return [[app_button(label, self.settings.mini_app_url)]]
+
+    def _home_keyboard(self, configured: bool) -> list:
+        rows = []
+        if configured and self.settings.mini_app_url:
+            rows.append([app_button("Открыть проекты", self.settings.mini_app_url)])
+            rows.append([button("Обновить профиль", callback_data="intake:start")])
+        else:
+            rows.append(
+                [button("Рассказать о себе", callback_data="intake:start", style="primary")]
+            )
+            if self.settings.mini_app_url:
+                rows.append([app_button("Заполнить форму", self.settings.mini_app_url)])
+        return rows
+
+    async def _complete_profile_from_text(self, user: TelegramUser, text: str) -> None:
+        if len(text) < 20:
+            await self._send_message(
+                user.telegram_user_id,
+                "Добавьте пару деталей: чем занимаетесь, какие задачи берёте и что хотели бы найти.",
+            )
+            return
+        await self._api("sendChatAction", {"chat_id": user.telegram_user_id, "action": "typing"})
+        async with self.session_factory() as session:
+            db_user = await session.get(TelegramUser, user.id)
+            await self.recommendations.apply_profile_intake(session, db_user, text)
+        keyboard = []
+        if self.settings.mini_app_url:
+            keyboard.append([app_button("Смотреть проекты", self.settings.mini_app_url)])
+        keyboard.append(
+            [button("Добавить портфолио", callback_data="intake:portfolio", style="success")]
+        )
+        await self._send_message(
+            user.telegram_user_id,
+            "<b>Профиль готов.</b> Я выделил навыки из рассказа и запустил подбор. "
+            "Портфолио необязательно — его можно прислать файлом сейчас или позже.",
+            keyboard,
+        )
+
+    async def _handle_voice(self, user: TelegramUser, voice: dict) -> None:
+        if int(voice.get("file_size") or 0) > 20 * 1024 * 1024:
+            await self._send_message(user.telegram_user_id, "Голосовое длиннее 20 МБ. Пришлите короче.")
+            return
+        await self._api("sendChatAction", {"chat_id": user.telegram_user_id, "action": "typing"})
+        path: Path | None = None
+        try:
+            path = await self._download_telegram_file(voice["file_id"], ".ogg")
+            transcript = await self._transcriber.transcribe(path)
+            if len(transcript) < 20:
+                raise RuntimeError("The voice transcript is empty")
+            await self._complete_profile_from_text(user, transcript)
+        except Exception:
+            logger.exception("Voice profile intake failed")
+            await self._send_message(
+                user.telegram_user_id,
+                "Не удалось уверенно разобрать запись. Пришлите более короткое голосовое или текст.",
+            )
+        finally:
+            if path:
+                path.unlink(missing_ok=True)
+
+    async def _handle_document(self, user: TelegramUser, document: dict, caption: str) -> None:
+        if int(document.get("file_size") or 0) > 20 * 1024 * 1024:
+            await self._send_message(user.telegram_user_id, "Файл больше 20 МБ. Пришлите облегчённую версию.")
+            return
+        file_name = (document.get("file_name") or "Портфолио")[:200]
+        suffix = Path(file_name).suffix[:12]
+        path: Path | None = None
+        try:
+            await self._api("sendChatAction", {"chat_id": user.telegram_user_id, "action": "typing"})
+            path = await self._download_telegram_file(document["file_id"], suffix)
+            extracted = await asyncio.to_thread(
+                extract_document_text,
+                path,
+                document.get("mime_type"),
+            )
+            description = (caption.strip() or extracted or f"Файл портфолио: {file_name}")[:1500]
+            async with self.session_factory() as session:
+                db_user = await session.get(TelegramUser, user.id)
+                profile = self.recommendations.profile_for(db_user)
+                slug = re.sub(r"[^a-z0-9]+", "-", file_name.lower()).strip("-") or "portfolio"
+                project = PortfolioProject(
+                    slug=f"{slug}-{int(datetime.now(UTC).timestamp())}",
+                    title=Path(file_name).stem[:200] or "Портфолио",
+                    description=description,
+                    skills=profile.candidate.skills[:50],
+                    telegram_file_id=document["file_id"],
+                    file_name=file_name,
+                    mime_type=document.get("mime_type"),
+                )
+                db_user.portfolio = [*(db_user.portfolio or []), project.model_dump()]
+                await session.commit()
+            await self._send_message(
+                user.telegram_user_id,
+                f"<b>{html.escape(file_name)}</b> добавлен в портфолио.",
+                self._app_keyboard("Открыть проекты"),
+            )
+        except Exception:
+            logger.exception("Portfolio document intake failed")
+            await self._send_message(
+                user.telegram_user_id,
+                "Не удалось обработать файл. Подойдут PDF, DOCX, TXT или Markdown до 20 МБ.",
+            )
+        finally:
+            if path:
+                path.unlink(missing_ok=True)
+
+    async def _download_telegram_file(self, file_id: str, suffix: str) -> Path:
+        file_info = await self._api("getFile", {"file_id": file_id})
+        remote_path = file_info.get("file_path")
+        if not remote_path or not self._client:
+            raise RuntimeError("Telegram did not return a file path")
+        url = f"https://api.telegram.org/file/bot{self.settings.telegram_bot_token}/{remote_path}"
+        async with self._client.get(url) as response:
+            response.raise_for_status()
+            payload = await response.read()
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as output:
+            output.write(payload)
+            return Path(output.name)
 
     async def _digest(self, user: TelegramUser) -> None:
         async with self.session_factory() as session:
@@ -345,6 +520,9 @@ class TelegramBot:
 
     async def _handle_callback(self, user: TelegramUser, callback: dict) -> None:
         data = callback.get("data", "")
+        if data.startswith("intake:"):
+            await self._handle_intake_callback(user, callback, data.partition(":")[2])
+            return
         try:
             action, raw_id, *extra = data.split(":")
             match_id = int(raw_id)
@@ -372,10 +550,20 @@ class TelegramBot:
                 keyboard = []
                 if opportunity.contact_username:
                     username = opportunity.contact_username.lstrip("@")
-                    keyboard.append([{"text": "✉️ НАПИСАТЬ В TELEGRAM", "url": f"https://t.me/{username}"}])
+                    keyboard.append(
+                        [button("Написать заказчику", url=f"https://t.me/{username}", style="primary")]
+                    )
                 if opportunity.source_url:
-                    keyboard.append([{"text": "👀 ОТКРЫТЬ ВАКАНСИЮ", "url": opportunity.source_url}])
-                keyboard.append([{"text": "✅ Я ОТКЛИКНУЛСЯ", "callback_data": f"contacted:{match.id}"}])
+                    keyboard.append([button("Открыть источник", url=opportunity.source_url)])
+                keyboard.append(
+                    [
+                        button(
+                            "Я откликнулся",
+                            callback_data=f"contacted:{match.id}",
+                            style="success",
+                        )
+                    ]
+                )
                 await self._send_message(
                     user.telegram_user_id,
                     "<b>Персональный черновик — проверьте и отправьте вручную</b>\n\n"
@@ -386,7 +574,7 @@ class TelegramBot:
             elif action == "skip":
                 keyboard = [
                     [
-                        {"text": label, "callback_data": f"reason:{match.id}:{key}"}
+                        button(label, callback_data=f"reason:{match.id}:{key}")
                         for key, label in list(SKIP_REASONS.items())[index : index + 2]
                     ]
                     for index in range(0, len(SKIP_REASONS), 2)
@@ -409,6 +597,47 @@ class TelegramBot:
                 match.contacted_at = datetime.now(UTC)
                 await session.commit()
                 await self._answer_callback(callback["id"], "Отклик отмечен")
+
+    async def _handle_intake_callback(
+        self,
+        user: TelegramUser,
+        callback: dict,
+        action: str,
+    ) -> None:
+        if action == "start":
+            async with self.session_factory() as session:
+                db_user = await session.get(TelegramUser, user.id)
+                raw_profile = dict(db_user.profile or {})
+                ui = dict(raw_profile.get("ui", {}))
+                ui["intake_state"] = "awaiting_about"
+                raw_profile["ui"] = ui
+                db_user.profile = raw_profile
+                await session.commit()
+            await self._send_message(
+                user.telegram_user_id,
+                "<b>Расскажите о себе одним сообщением.</b>\n\n"
+                "Например: чем занимаетесь, какие задачи любите, с какими инструментами работаете "
+                "и какой бюджет рассматриваете. Можно написать текст или записать голосовое.",
+            )
+            await self._answer_callback(callback["id"])
+            return
+        if action == "portfolio":
+            await self._send_message(
+                user.telegram_user_id,
+                "Пришлите PDF, DOCX, TXT или Markdown. Можно добавить короткую подпись к файлу.",
+                [[button("Продолжить без файла", callback_data="intake:finish")]],
+            )
+            await self._answer_callback(callback["id"])
+            return
+        if action == "finish":
+            await self._send_message(
+                user.telegram_user_id,
+                "Готово. Портфолио можно добавить в любой момент, просто отправив файл в этот чат.",
+                self._app_keyboard("Открыть проекты"),
+            )
+            await self._answer_callback(callback["id"])
+            return
+        await self._answer_callback(callback["id"], "Действие устарело")
 
     async def _stats_text(self, user: TelegramUser) -> str:
         async with self.session_factory() as session:
@@ -481,13 +710,17 @@ class TelegramBot:
     async def _send_card(self, chat_id: int, opportunity: Opportunity, match: UserOpportunity) -> None:
         keyboard = [
             [
-                {"text": "✅ APPROVE", "callback_data": f"approve:{match.id}"},
-                {"text": "❌ SKIP", "callback_data": f"skip:{match.id}"},
+                button(
+                    "Подготовить отклик",
+                    callback_data=f"approve:{match.id}",
+                    style="primary",
+                ),
+                button("Не подходит", callback_data=f"skip:{match.id}", style="danger"),
             ]
         ]
-        second_row = [{"text": "🧠 DETAILS", "callback_data": f"details:{match.id}"}]
+        second_row = [button("Почему подходит", callback_data=f"details:{match.id}")]
         if opportunity.source_url:
-            second_row.insert(0, {"text": "👀 OPEN", "url": opportunity.source_url})
+            second_row.insert(0, button("Источник", url=opportunity.source_url))
         keyboard.append(second_row)
         await self._send_message(chat_id, _format_card(opportunity, match), keyboard)
 
@@ -504,24 +737,35 @@ class TelegramBot:
         await self._api("answerCallbackQuery", payload)
 
     async def _api(self, method: str, payload: dict, timeout: int = 20):
-        async def request_once(client: aiohttp.ClientSession) -> tuple[int, dict]:
-            async with client.post(f"{self.base_url}/{method}", json=payload) as response:
+        if not self._client:
+            raise RuntimeError("Telegram Bot API client is not started")
+
+        async def request_once() -> tuple[int, dict]:
+            request_timeout = aiohttp.ClientTimeout(total=timeout)
+            async with self._client.post(
+                f"{self.base_url}/{method}",
+                json=payload,
+                timeout=request_timeout,
+            ) as response:
                 return response.status, await response.json(content_type=None)
 
-        try:
-            client_timeout = aiohttp.ClientTimeout(total=timeout)
-            connector = aiohttp.TCPConnector(family=socket.AF_INET)
-            async with aiohttp.ClientSession(timeout=client_timeout, connector=connector) as client:
-                status, body = await request_once(client)
+        for attempt in range(3):
+            try:
+                status, body = await request_once()
                 if status == 429:
                     retry_after = body.get("parameters", {}).get("retry_after", 1)
                     await asyncio.sleep(min(int(retry_after), 10))
-                    status, body = await request_once(client)
+                    status, body = await request_once()
                 if status >= 400:
                     raise RuntimeError(f"Telegram Bot API request failed for {method}: HTTP {status}")
-        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as exc:
-            error_type = type(exc).__name__
-            raise RuntimeError(f"Telegram Bot API request failed for {method}: {error_type}") from None
+                break
+            except (aiohttp.ClientError, TimeoutError, ValueError) as exc:
+                if attempt == 2:
+                    error_type = type(exc).__name__
+                    raise RuntimeError(
+                        f"Telegram Bot API request failed for {method}: {error_type}"
+                    ) from None
+                await asyncio.sleep(1 + attempt * 2)
         if not body.get("ok"):
             raise RuntimeError(body.get("description", "Telegram Bot API error"))
         return body.get("result")
@@ -529,12 +773,17 @@ class TelegramBot:
 
 def _help_text() -> str:
     return (
-        "<b>Hunt Agent</b>\n\n"
-        "/app — открыть кабинет\n"
-        "/pause и /resume — остановить или продолжить агента\n"
-        "/settings — текущие настройки поиска\n\n"
-        "Новые сильные совпадения приходят сюда. По умолчанию агент готовит черновик и ждёт вашего решения."
+        "<b>Как это работает</b>\n\n"
+        "Расскажите о своём опыте текстом или голосом. Я соберу профиль, отберу проекты и "
+        "объясню совпадения. Портфолио можно прислать файлом, но это необязательно.\n\n"
+        "Отклики отправляете только вы."
     )
+
+
+def _profile_with_ui(user: TelegramUser, profile) -> dict:
+    raw_profile = profile.model_dump()
+    raw_profile["ui"] = dict((user.profile or {}).get("ui", {}))
+    return raw_profile
 
 
 def _format_card(opportunity: Opportunity, match: UserOpportunity) -> str:
@@ -551,16 +800,13 @@ def _format_card(opportunity: Opportunity, match: UserOpportunity) -> str:
     )
     analysis = match.analysis or {}
     risks = analysis.get("risks") or []
-    risks_text = "\n".join(f"• {html.escape(str(risk))}" for risk in risks[:4]) or "• явных рисков не найдено"
+    risk_text = f"\nРиск: {html.escape(str(risks[0]))}" if risks else ""
     return (
-        f"🔥 <b>{match.final_score:.0f}/100 — {html.escape(opportunity.title[:120])}</b>\n"
-        f"💰 {html.escape(budget)}\n⏱ {effort}\n💵 {hourly}\n"
-        f"Источник: {html.escape(opportunity.source)}\n\n"
-        f"FIT <b>{match.fit_score:.0f}</b> · MONEY <b>{match.money_score:.0f}</b> · "
-        f"WIN <b>{match.win_score:.0f}</b>\n\n"
-        f"<b>Почему подходит</b>\n"
-        f"{html.escape(str(analysis.get('fit_reason') or 'Нужна ручная проверка'))}\n\n"
-        f"<b>Риски</b>\n{risks_text}"
+        f"<b>{html.escape(opportunity.title[:120])}</b>\n"
+        f"{match.final_score:.0f}% совпадение · {html.escape(opportunity.source)}\n"
+        f"{html.escape(budget)} · {effort} · {hourly}\n\n"
+        f"{html.escape(str(analysis.get('fit_reason') or 'Нужна ручная проверка'))}"
+        f"{risk_text}"
     )
 
 

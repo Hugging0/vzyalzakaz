@@ -54,6 +54,16 @@ class LLMAnalysis(BaseModel):
     win_score: float = Field(ge=0, le=100)
 
 
+class ProfileIntake(BaseModel):
+    """Structured facts extracted from a free-form profile introduction."""
+
+    skills: list[str] = Field(default_factory=list, max_length=40)
+    specialties: list[str] = Field(default_factory=list, max_length=8)
+    languages: list[str] = Field(default_factory=list, max_length=10)
+    minimum_project_rub: int | None = Field(default=None, ge=0, le=100_000_000)
+    target_hourly_rub: int | None = Field(default=None, ge=0, le=1_000_000)
+
+
 class OpportunityRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

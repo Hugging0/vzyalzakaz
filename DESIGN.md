@@ -1,23 +1,71 @@
-# Design System
+# Design System: Colorblock Studio
 
-## Overview
+Статус: обязательный визуальный контракт для Telegram Mini App и материалов продукта. Источник направления — `concept_c_colorblock_studio.html`; ошибки референса (микрошрифт, большой словесный логотип, повторяющийся текст) намеренно не переносятся.
 
-Hunt Agent — Telegram-first рабочий инструмент с метафорой signal: он отсекает шум и выделяет сильные возможности. Визуальный язык спокойный, собранный и профессиональный.
+## Характер
 
-## Colors
+Рабочий, живой, собранный. Кремовая бумага, тёмно-синий контур, простые цветовые блоки, жёсткая небольшая тень и асимметричная геометрия. Это не «AI dashboard»: без градиентов, стекла, свечения, бесконечных pill-элементов и декоративной аналитики.
 
-Light: background `#F6F7F9`, surface `#FFFFFF`, primary ink `#121417`, secondary ink `#344054`, muted `#667085`, border `#EAECF0`, deep green `#123A2B`, signal green `#35C983`, soft green `#ECFDF3`, info `#2E6BE6`, warning `#D97706`, danger `#D92D20`.
+## Зафиксированные токены
 
-Dark: background `#0E1114`, surface `#15191E`, elevated `#1B2026`, primary text `#F5F7FA`, secondary text `#C5CBD3`, muted `#8B949E`, border `#2A3038`.
+| Роль | Light | Назначение |
+|---|---:|---|
+| Background | `#F6F3EC` | фон приложения |
+| Paper | `#FFFDFA` | формы, нейтральные поверхности |
+| Ink | `#17223D` | текст, контуры, навигация |
+| Pink | `#ED4569` | главный акцент |
+| Pink soft | `#F58AA2` | крупный цветовой блок |
+| Blue | `#DFE7FF` | информация, пустые состояния |
+| Yellow | `#F4E3A6` | внимание, статистика |
+| Mint | `#DCEADF` | успех, активный поиск |
+| Danger | `#B82643` | ошибки и опасные действия |
 
-## Typography
+Контур — строго `2px`. Жёсткая тень — строго `3px 3px 0`; для кнопки `2px 2px 0`. Тень не совмещается с размытой тенью. Базовые углы: `18px 6px 18px 6px`; элементы управления: `10px 4px 10px 4px`. Pill используется только для badge.
 
-Inter with a system sans-serif fallback. Use dense but readable product typography: screen headings 24px, section headings 18px, card titles 16px, body 15px, metadata 12px or larger.
+## Типографика
 
-## Components
+- Основной шрифт: `Golos Text`, fallback `system-ui, sans-serif`.
+- Заголовки: `Unbounded`, fallback `Golos Text, sans-serif`.
+- Экранный заголовок: `30/32px`, weight `700`.
+- Заголовок карточки: `18/23px`, weight `700`.
+- Основной текст и поля: `16/24px`.
+- Кнопка: `15/20px`, weight `750`.
+- Подпись и метаданные: `14/20px`.
+- Абсолютный минимум: `13/18px`. Шрифт меньше `13px` запрещён во всём интерфейсе.
+- Верхний регистр для длинных подписей запрещён.
 
-Build and reuse `AppButton`, `AppCard`, `AppBadge`, `AppNotice`, `AppField`, `AppSwitch`, `AppSheet`, `AppEmptyState`, and `AppSkeleton`. Domain components should compose these primitives rather than create alternate visual systems.
+## Компонентный контракт
 
-## Layout & Motion
+Новые доменные экраны собираются только из этих примитивов:
 
-Mobile-first single column with Telegram safe-area-aware fixed navigation. On wide web use a constrained content column or master-detail layout. Use 12/16/20/24px radii and subtle borders instead of heavy shadows. Motion is 140–220ms, state-driven, and disabled for reduced motion.
+- `AppLogo` — единственный знак бренда в masthead; текстовый логотип рядом не дублируется.
+- `AppButton` — варианты `primary`, `secondary`, `ghost`, `success`, `danger`; высота от `46px`.
+- `AppCard` — варианты `paper`, `pink`, `blue`, `yellow`, `mint`, `ink`.
+- `AppBadge` — короткий статус или число, не предложение.
+- `AppField` — label + control + необязательная подсказка.
+- `AppRangeField` — числовой порог с текущим значением и touch-friendly range control.
+- `AppNotice` — системное сообщение `neutral`, `warning`, `success`, `danger`.
+- `AppEmptyState` и `FeedSkeleton` — единые пустые и загрузочные состояния.
+
+Нельзя создавать локальный вариант кнопки, карточки, поля, badge, notice или skeleton внутри feature-компонента. Если существующего варианта не хватает, сначала расширяется примитив и этот документ.
+
+## Сетка и поведение
+
+- Mobile-first, одна колонка до `680px`, внешний отступ `16px`.
+- Вертикальный шаг между блоками `14px`; внутренний отступ карточки `18px`.
+- Любая touch-цель — минимум `44×44px`.
+- Нижняя навигация фиксирована, четыре раздела, активный раздел отмечен жёлтым блоком.
+- Анимация только для смены состояния, `140ms`; при `prefers-reduced-motion` отключается.
+- Палитра Colorblock Studio фиксирована внутри Mini App и не перекрашивается системной dark theme Telegram. Это исключает расхождение бренда между iOS, Android и web; системная тема влияет только на оболочку Telegram.
+
+## Контент
+
+- Один экран — один заголовок. Подзаголовок добавляется только если сообщает новое.
+- Не повторять название продукта, статус поиска или одну инструкцию в соседних блоках.
+- Никаких «Добрый вечер», «есть свежие совпадения», «что сегодня стоит открыть» перед самой лентой.
+- Кнопка называется действием: «Открыть проект», «Создать профиль», «Не подходит».
+- AI не является героем текста. Пользователь видит результат: подбор, причины, черновик.
+
+## Telegram Bot
+
+Inline-кнопки создаются только через `app.telegram.ui.button`/`app_button`. Семантика: `primary` — главное продолжение, `success` — подтверждённый положительный результат, `danger` — отказ или разрушительное действие, без style — вторичное действие. Уведомление содержит один проект, одну причину релевантности и не более двух рядов основных действий.

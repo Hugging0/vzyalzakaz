@@ -1,14 +1,51 @@
+import { AudioLines, FileText, MessageSquareText } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { AppButton } from "@/components/ui/AppButton";
 import { AppCard } from "@/components/ui/AppCard";
+import { AppField } from "@/components/ui/AppField";
+import { AppNotice } from "@/components/ui/AppNotice";
 import { miniAppApi } from "@/lib/api/client";
+import { telegramBridge } from "@/lib/telegram/telegram-webapp";
 
-const specialties = ["Backend", "Frontend", "Fullstack", "Telegram bots", "AI / Automation", "Design", "Marketing"];
 export function OnboardingView() {
-  const client = useQueryClient(); const [selected, setSelected] = useState<string[]>([]); const [skills, setSkills] = useState(""); const [budget, setBudget] = useState("10000"); const [about, setAbout] = useState("");
-  const save = useMutation({ mutationFn: () => miniAppApi.updateProfile({ specialties: selected, skills: skills.split(",").map((item) => item.trim()).filter(Boolean), minimumBudget: Number(budget), about, onboardingCompleted: true }), onSuccess: () => client.invalidateQueries({ queryKey: ["profile"] }) });
-  const toggle = (value: string) => setSelected((current) => current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
-  return <><header className="app-header"><div><h1>Расскажите о себе</h1><p>Настроим первые совпадения за минуту</p></div></header><div className="stack"><AppCard><h2>Чем вы занимаетесь?</h2><div className="chip-grid">{specialties.map((item) => <button key={item} type="button" className="choice-chip" data-selected={selected.includes(item)} onClick={() => toggle(item)}>{item}</button>)}</div></AppCard><AppCard><label className="field-label" htmlFor="onboarding-skills">Ключевые навыки</label><input id="onboarding-skills" className="app-input" value={skills} onChange={(event) => setSkills(event.target.value)} placeholder="Python, FastAPI, PostgreSQL" /><label className="field-label" htmlFor="onboarding-budget">Минимальный бюджет, ₽</label><input id="onboarding-budget" className="app-input" type="number" min="0" value={budget} onChange={(event) => setBudget(event.target.value)} /><label className="field-label" htmlFor="onboarding-about">Какие задачи вы берёте лучше всего?</label><textarea id="onboarding-about" className="proposal-editor compact-editor" value={about} onChange={(event) => setAbout(event.target.value)} placeholder="Делаю API, Telegram-ботов и автоматизацию…" /><AppButton disabled={save.isPending || selected.length === 0 || skills.trim().length === 0} onClick={() => save.mutate()}>{save.isPending ? "Сохраняем…" : "Открыть ленту"}</AppButton></AppCard></div></>;
+  const client = useQueryClient();
+  const [about, setAbout] = useState("");
+  const [budget, setBudget] = useState("");
+  const save = useMutation({
+    mutationFn: () => miniAppApi.completeOnboarding({
+      about: about.trim(),
+      ...(budget ? { minimumBudget: Number(budget) } : {}),
+    }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["profile"] }),
+  });
+
+  return <>
+    <header className="app-header onboarding-header">
+      <div><h1>Расскажите, какую работу ищете</h1><p>Одного сообщения достаточно, чтобы запустить подбор.</p></div>
+    </header>
+    <div className="onboarding-layout">
+      <AppCard tone="pink" className="onboarding-intro">
+        <MessageSquareText size={24} aria-hidden="true" />
+        <strong>Пишите как человеку</strong>
+        <p>Чем занимаетесь, какие задачи берёте, с чем работаете и что точно не подходит.</p>
+      </AppCard>
+      <AppCard className="onboarding-card">
+        <AppField label="О себе и желаемых проектах" htmlFor="onboarding-about" hint="Например: проектирую интерфейсы в Figma, люблю сложные кабинеты и дизайн-системы. Ищу проекты от 50 000 ₽.">
+          <textarea id="onboarding-about" className="app-textarea onboarding-textarea" value={about} onChange={(event) => setAbout(event.target.value)} placeholder="Расскажите о своём опыте и задачах…" autoFocus />
+        </AppField>
+        <AppField label="Минимальный бюджет, ₽ — необязательно" htmlFor="onboarding-budget">
+          <input id="onboarding-budget" className="app-input" type="number" inputMode="numeric" min="0" value={budget} onChange={(event) => setBudget(event.target.value)} placeholder="Например, 30 000" />
+        </AppField>
+        {save.isError && <AppNotice tone="danger">Не удалось сохранить профиль. Проверьте соединение и попробуйте ещё раз.</AppNotice>}
+        <AppButton disabled={about.trim().length < 20 || save.isPending} onClick={() => save.mutate()}>{save.isPending ? "Собираем профиль…" : "Создать профиль"}</AppButton>
+      </AppCard>
+      <AppCard tone="blue" className="onboarding-alternative">
+        <div><AudioLines size={22} aria-hidden="true" /><strong>Удобнее голосом?</strong></div>
+        <p>Отправьте боту голосовое и документы портфолио. Без документов профиль тоже будет создан.</p>
+        <AppButton variant="ghost" onClick={() => telegramBridge.openTelegramLink("https://t.me/vzyal_zakaz_bot")}><FileText size={18} /> Открыть чат с ботом</AppButton>
+      </AppCard>
+    </div>
+  </>;
 }

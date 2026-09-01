@@ -1,6 +1,8 @@
 import { BarChart3, BriefcaseBusiness, Rss, UserRound } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { AppLogo } from "@/components/ui/AppLogo";
+
 type Tab = "feed" | "applications" | "analytics" | "profile";
 const tabs = [
   { id: "feed" as const, label: "Лента", Icon: Rss },
@@ -10,7 +12,7 @@ const tabs = [
 ];
 
 export function MiniAppShell({ activeTab, onTabChange, children }: { activeTab: Tab; onTabChange: (tab: Tab) => void; children: ReactNode }) {
-  return <main className="app-shell"><div className="app-content">{children}</div><nav className="bottom-nav" aria-label="Основная навигация"><div className="bottom-nav-inner">
+  return <main className="app-shell"><div className="app-content"><div className="app-masthead"><AppLogo /><span className="app-masthead-line" aria-hidden="true" /></div>{children}</div><nav className="bottom-nav" aria-label="Основная навигация"><div className="bottom-nav-inner">
     {tabs.map(({ id, label, Icon }) => <button key={id} type="button" data-active={activeTab === id} onClick={() => onTabChange(id)}><Icon size={19} strokeWidth={activeTab === id ? 2.4 : 2} /><span>{label}</span></button>)}
   </div></nav></main>;
 }

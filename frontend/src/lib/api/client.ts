@@ -26,6 +26,7 @@ export const miniAppApi = {
   auth: (initData: string) => request<{ token: string }>("/api/mini-app/auth", { method: "POST", body: JSON.stringify({ init_data: initData }) }),
   devAuth: () => request<{ token: string }>("/api/mini-app/auth/dev", { method: "POST" }),
   me: () => request<Profile>("/api/app/me"),
+  completeOnboarding: (payload: { about: string; minimumBudget?: number }) => request<Profile>("/api/app/onboarding", { method: "POST", body: JSON.stringify(payload) }),
   updateProfile: (payload: Partial<Profile>) => request<Profile>("/api/app/me", { method: "PATCH", body: JSON.stringify(payload) }),
   leads: () => request<unknown[]>("/api/app/leads"),
   skipLead: (id: number) => request<void>(`/api/app/leads/${id}/skip`, { method: "POST" }),

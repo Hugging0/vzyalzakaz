@@ -65,7 +65,7 @@ class Opportunity(Base):
     employment_type: Mapped[str | None] = mapped_column(String(50))
     estimated_hours: Mapped[float | None] = mapped_column(Float)
     remote: Mapped[bool | None] = mapped_column(Boolean)
-    country: Mapped[str | None] = mapped_column(String(100))
+    country: Mapped[str | None] = mapped_column(Text)
     languages: Mapped[list] = mapped_column(JSON, default=list)
     skills: Mapped[list] = mapped_column(JSON, default=list)
     technologies: Mapped[list] = mapped_column(JSON, default=list)

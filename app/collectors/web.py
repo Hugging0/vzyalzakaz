@@ -268,6 +268,210 @@ class JobicySource(JobSource):
         ]
 
 
+class HimalayasSource(JobSource):
+    async def fetch_new(self) -> list[RawOpportunity]:
+        data = await self.get_json(
+            self.config.url or "https://himalayas.app/jobs/api",
+            params={"limit": min(int(self.config.options.get("limit", 20)), 20)},
+        )
+        jobs = data.get("jobs", []) if isinstance(data, dict) else []
+        return [
+            RawOpportunity(
+                source=self.config.name,
+                source_type="api",
+                external_id=str(job.get("guid") or job.get("applicationLink")),
+                title=job.get("title", ""),
+                description=_text(job.get("description") or job.get("excerpt")),
+                raw_text=f"{job.get('title', '')}\n{_text(job.get('description') or job.get('excerpt'))}",
+                source_url=job.get("applicationLink") or job.get("guid"),
+                company=job.get("companyName"),
+                budget_min=job.get("minSalary"),
+                budget_max=job.get("maxSalary"),
+                currency=job.get("currency"),
+                employment_type=job.get("employmentType"),
+                remote=True,
+                country=", ".join(job.get("locationRestrictions") or []) or "Worldwide",
+                skills=(job.get("categories") or []) + (job.get("parentCategories") or []),
+                published_at=_date(job.get("pubDate")),
+                apply_mode=self.config.apply_mode,
+            )
+            for job in jobs
+            if isinstance(job, dict) and (job.get("guid") or job.get("applicationLink"))
+        ]
+
+
+class FreelancerSource(JobSource):
+    async def fetch_new(self) -> list[RawOpportunity]:
+        data = await self.get_json(
+            self.config.url
+            or "https://www.freelancer.com/api/projects/0.1/projects/active/",
+            params={
+                "limit": min(int(self.config.options.get("limit", 50)), 100),
+                "full_description": "true",
+                "job_details": "true",
+                "sort_field": "time_updated",
+            },
+        )
+        projects = (data.get("result") or {}).get("projects", []) if isinstance(data, dict) else []
+        results = []
+        for project in projects:
+            if not isinstance(project, dict) or not project.get("id"):
+                continue
+            description = _text(project.get("description") or project.get("preview_description"))
+            currency = project.get("currency") or {}
+            budget = project.get("budget") or {}
+            location = project.get("location") or {}
+            country = location.get("country") or {}
+            seo_url = (project.get("seo_url") or "").lstrip("/")
+            source_url = (
+                f"https://www.freelancer.com/projects/{seo_url}"
+                if seo_url
+                else f"https://www.freelancer.com/projects/{project['id']}"
+            )
+            results.append(
+                RawOpportunity(
+                    source=self.config.name,
+                    source_type="api",
+                    external_id=str(project["id"]),
+                    title=(project.get("title") or "").strip(),
+                    description=description,
+                    raw_text=f"{project.get('title', '')}\n{description}",
+                    source_url=source_url,
+                    budget_min=budget.get("minimum"),
+                    budget_max=budget.get("maximum"),
+                    currency=currency.get("code"),
+                    employment_type=project.get("type") or "freelance",
+                    remote=not bool(project.get("local")),
+                    country=country.get("name") or country.get("code"),
+                    skills=[job.get("name") for job in project.get("jobs") or [] if job.get("name")],
+                    published_at=_date(project.get("time_submitted") or project.get("submitdate")),
+                    apply_mode=self.config.apply_mode,
+                )
+            )
+        return results
+
+
+class WorkingNomadsSource(JobSource):
+    async def fetch_new(self) -> list[RawOpportunity]:
+        data = await self.get_json(
+            self.config.url or "https://www.workingnomads.com/api/exposed_jobs/"
+        )
+        jobs = data if isinstance(data, list) else []
+        limit = int(self.config.options.get("limit", 100))
+        return [
+            RawOpportunity(
+                source=self.config.name,
+                source_type="api",
+                external_id=str(job.get("url")),
+                title=job.get("title", ""),
+                description=_text(job.get("description")),
+                raw_text=f"{job.get('title', '')}\n{_text(job.get('description'))}",
+                source_url=job.get("url"),
+                company=job.get("company_name"),
+                employment_type="remote",
+                remote=True,
+                country=job.get("location"),
+                skills=[tag.strip() for tag in (job.get("tags") or "").split(",") if tag.strip()],
+                published_at=_date(job.get("pub_date")),
+                apply_mode=self.config.apply_mode,
+            )
+            for job in jobs[:limit]
+            if isinstance(job, dict) and job.get("url")
+        ]
+
+
+class ProBloggerSource(JobSource):
+    async def fetch_new(self) -> list[RawOpportunity]:
+        html = await self.get_text(self.config.url or "https://problogger.com/jobs/")
+        soup = BeautifulSoup(html, "html.parser")
+        results = []
+        for row in soup.select(".wpjb-job-list .wpjb-grid-row"):
+            title_link = row.select_one(".wpjb-col-title .wpjb-line-major a[href]")
+            if not title_link:
+                continue
+            title = title_link.get_text(" ", strip=True)
+            source_url = title_link.get("href")
+            company_node = row.select_one(".wpjb-col-title .wpjb-sub")
+            location_node = row.select_one(".wpjb-col-location .wpjb-line-major")
+            job_type_node = row.select_one(".wpjb-col-location .wpjb-sub")
+            category_node = row.select_one(".custom-category-col .wpjb-line-major")
+            company = company_node.get_text(" ", strip=True) if company_node else None
+            location = location_node.get_text(" ", strip=True) if location_node else None
+            job_type = job_type_node.get_text(" ", strip=True) if job_type_node else None
+            category = category_node.get_text(" ", strip=True) if category_node else None
+            details = " · ".join(value for value in (company, location, job_type, category) if value)
+            results.append(
+                RawOpportunity(
+                    source=self.config.name,
+                    source_type="web",
+                    external_id=str(source_url),
+                    title=title,
+                    description=details,
+                    raw_text=f"{title}\n{details}",
+                    source_url=source_url,
+                    company=company,
+                    employment_type=job_type or "freelance",
+                    remote=(location or "").lower() in {"remote", "anywhere", "worldwide"},
+                    country=location,
+                    skills=[category] if category else [],
+                    apply_mode=self.config.apply_mode,
+                )
+            )
+        return results
+
+
+class GenericRSSSource(JobSource):
+    async def fetch_new(self) -> list[RawOpportunity]:
+        xml = await self.get_text(self.config.url or "")
+        root = ElementTree.fromstring(xml)
+        items = root.findall("./channel/item")
+        limit = int(self.config.options.get("limit", 100))
+        configured_skills = self.config.options.get("skills") or []
+        results = []
+        for item in items[:limit]:
+            title = _text(item.findtext("title"))
+            description = _text(
+                item.findtext("description")
+                or item.findtext("{http://purl.org/rss/1.0/modules/content/}encoded")
+            )
+            link = item.findtext("link")
+            guid = item.findtext("guid") or link or title
+            if not title or not guid:
+                continue
+            published = item.findtext("pubDate")
+            try:
+                published_at = parsedate_to_datetime(published) if published else None
+            except (TypeError, ValueError):
+                published_at = None
+            categories = [
+                _text(category.text)
+                for category in item.findall("category")
+                if _text(category.text)
+            ]
+            raw_text = f"{title}\n{description}"
+            normalized = raw_text.lower()
+            remote = bool(self.config.options.get("remote")) or any(
+                marker in normalized for marker in ("remote", "anywhere", "worldwide")
+            )
+            results.append(
+                RawOpportunity(
+                    source=self.config.name,
+                    source_type="rss",
+                    external_id=str(guid),
+                    title=title,
+                    description=description,
+                    raw_text=raw_text,
+                    source_url=link,
+                    employment_type=self.config.options.get("employment_type"),
+                    remote=remote,
+                    skills=[*configured_skills, *categories],
+                    published_at=published_at,
+                    apply_mode=self.config.apply_mode,
+                )
+            )
+        return results
+
+
 COLLECTOR_REGISTRY: dict[str, type[JobSource]] = {
     "hh": HHSource,
     "remotive": RemotiveSource,
@@ -276,6 +480,11 @@ COLLECTOR_REGISTRY: dict[str, type[JobSource]] = {
     "hackernews": HackerNewsSource,
     "jobicy": JobicySource,
     "weworkremotely": WeWorkRemotelySource,
+    "himalayas": HimalayasSource,
+    "freelancer": FreelancerSource,
+    "working_nomads": WorkingNomadsSource,
+    "problogger": ProBloggerSource,
+    "generic_rss": GenericRSSSource,
 }
 
 

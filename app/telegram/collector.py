@@ -3,15 +3,17 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from contextlib import suppress
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
-from telethon import TelegramClient, events, utils
+from telethon import events, utils
 from telethon.tl.custom.message import Message
 
 from app.config import AppSettings, SourceConfig
 from app.models import OpportunityStatus
 from app.schemas import RawOpportunity
 from app.services.pipeline import OpportunityPipeline
+from app.telegram.client import create_user_client
 
 logger = logging.getLogger(__name__)
 URL_RE = re.compile(r"https?://[^\s<>]+")
@@ -31,12 +33,9 @@ class TelegramCollector:
         self.session_factory = session_factory
         self.pipeline = pipeline
         self.notifier = notifier
-        self.client = TelegramClient(
-            settings.telegram_session_path,
-            settings.telegram_api_id,
-            settings.telegram_api_hash,
-        )
+        self.client = create_user_client(settings)
         self._source_by_chat_id: dict[int, SourceConfig] = {}
+        self._initialization_task: asyncio.Task | None = None
 
     async def start(self) -> bool:
         await self.client.connect()
@@ -45,6 +44,13 @@ class TelegramCollector:
             await self.client.disconnect()
             return False
 
+        self._initialization_task = asyncio.create_task(
+            self._initialize_sources(), name="telegram-source-initialization"
+        )
+        logger.info("Telegram user session connected; resolving channels in background")
+        return True
+
+    async def _initialize_sources(self) -> None:
         entities = []
         for source in self.sources:
             try:
@@ -56,20 +62,23 @@ class TelegramCollector:
 
         if not entities:
             logger.warning("No Telegram channels could be resolved")
-            return True
+            return
         self.client.add_event_handler(self._on_new_message, events.NewMessage(chats=entities))
         self.client.add_event_handler(self._on_edited_message, events.MessageEdited(chats=entities))
         asyncio.create_task(self._initial_backfill(entities), name="telegram-backfill")
         logger.info("Telegram collector listening to %d channels", len(entities))
-        return True
 
     async def stop(self) -> None:
+        if self._initialization_task:
+            self._initialization_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._initialization_task
         if self.client.is_connected():
             await self.client.disconnect()
 
     async def _initial_backfill(self, entities: list) -> None:
         for entity in entities:
-            source = self._source_by_chat_id.get(entity.id)
+            source = self._source_by_chat_id.get(utils.get_peer_id(entity))
             if not source:
                 continue
             limit = int(source.options.get("backfill_limit", 100))

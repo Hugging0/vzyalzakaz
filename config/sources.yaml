@@ -189,3 +189,211 @@ sources:
     poll_interval: 21600
     url: https://jobicy.com/api/v2/remote-jobs
     options: {industry: copywriting, limit: 30}
+
+  # Additional catalog, 2026-09-01. Only sources with a verified, stable production
+  # adapter are enabled. `pending` entries are documented candidates and never reach
+  # create_collector while disabled.
+
+  # Verified public API / feed adapters
+  - name: himalayas
+    type: api
+    language: en
+    priority: tier_a
+    enabled: true
+    collector: himalayas
+    apply_mode: draft_only
+    poll_interval: 86400
+    url: https://himalayas.app/jobs/api
+    options: {limit: 20}
+
+  - name: freelancer_com
+    type: api
+    language: multi
+    priority: tier_a
+    enabled: true
+    collector: freelancer
+    apply_mode: draft_only
+    poll_interval: 1800
+    url: https://www.freelancer.com/api/projects/0.1/projects/active/
+    options: {limit: 50}
+
+  - name: working_nomads
+    type: api
+    language: en
+    priority: tier_a
+    enabled: true
+    collector: working_nomads
+    apply_mode: draft_only
+    poll_interval: 3600
+    url: https://www.workingnomads.com/api/exposed_jobs/
+    options: {limit: 100}
+
+  - name: problogger_jobs
+    type: web
+    language: en
+    priority: tier_a
+    enabled: true
+    collector: problogger
+    apply_mode: draft_only
+    poll_interval: 10800
+    url: https://problogger.com/jobs/
+
+  # Russia / CIS: public pages need a dedicated parser and production observation.
+  - {name: freelance_ru, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 1800, url: "https://freelance.ru/task/"}
+  - {name: fl_ru, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 1800, url: "https://www.fl.ru/projects/"}
+  - {name: kwork_projects, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 1800, url: "https://kwork.ru/projects"}
+  - {name: weblancer, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 1800, url: "https://www.weblancer.net/freelance/"}
+  - {name: workspace_tenders, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://workspace.ru/tenders/"}
+  - {name: dprofile_projects, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 1800, url: "https://dprofile.ru/jobs/projects"}
+  - {name: habr_career, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://career.habr.com/vacancies"}
+  - {name: getmatch, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://getmatch.ru/vacancies"}
+  - {name: geekjob, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://geekjob.ru/vacancies"}
+  - {name: finder_work_remote, type: web, language: ru, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://finder.work/vacancies/remote/all"}
+  - {name: rabota_ru_remote, type: web, language: ru, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://www.rabota.ru/vacancy/удаленная работа/"}
+  - {name: freelancehunt, type: web, language: multi, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 1800, url: "https://freelancehunt.com/projects"}
+  - {name: workzilla, type: web, language: ru, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://work-zilla.com/freelancer"}
+  - {name: youdo_digital, type: web, language: ru, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://youdo.com/tasks-all-opened-all"}
+  - {name: gderabota_remote, type: web, language: ru, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://gderabota.ru/"}
+
+  # International freelance / project marketplaces.
+  - {name: upwork, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://www.upwork.com/freelance-jobs/"}
+  - {name: peopleperhour, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://www.peopleperhour.com/freelance-jobs"}
+  - {name: guru, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://www.guru.com/d/jobs/"}
+  - {name: contra, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://contra.com/opportunities"}
+  - {name: workana, type: web, language: multi, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://www.workana.com/jobs"}
+  - {name: malt, type: web, language: multi, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://www.malt.com/"}
+  - {name: toptal, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://www.toptal.com/freelance-jobs"}
+  - {name: braintrust, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://www.usebraintrust.com/jobs"}
+  - {name: arc, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://arc.dev/remote-jobs"}
+  - {name: proxify, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://career.proxify.io/"}
+  - {name: a_team, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://www.a.team/join"}
+  - {name: yunojuno, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://www.yunojuno.com/freelancers"}
+  - {name: twine, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://www.twine.net/jobs"}
+  - {name: freelancermap, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://www.freelancermap.com/projects"}
+  - {name: codeable, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://www.codeable.io/freelance-wordpress-developer-jobs/"}
+  - {name: storetasker, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://www.storetasker.com/"}
+  - {name: designcrowd, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://www.designcrowd.com/jobs/home"}
+  - {name: 99designs, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://99designs.com/contests"}
+
+  # International remote / contract / startup boards.
+  - {name: wellfound, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://wellfound.com/jobs"}
+  - {name: yc_jobs, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://www.ycombinator.com/jobs"}
+  - {name: nodesk, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://nodesk.co/remote-jobs/"}
+  - {name: remote_co, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://remote.co/remote-jobs/"}
+  - {name: workew, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://workew.com/remote-jobs/"}
+  - {name: flexjobs, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://www.flexjobs.com/remote-jobs"}
+  - {name: dynamite_jobs, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://dynamitejobs.com/"}
+  - {name: skipthedrive, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://www.skipthedrive.com/"}
+  - {name: the_muse, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://www.themuse.com/search/"}
+  - {name: builtin_remote, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://builtin.com/jobs/remote"}
+  - {name: dice, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://www.dice.com/"}
+  - {name: jobspresso, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://jobspresso.co/remote-work/"}
+  - {name: justremote, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://justremote.co/remote-jobs"}
+  - {name: jobgether, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://jobgether.com/remote-jobs"}
+  - {name: adzuna_api, type: api, language: multi, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://api.adzuna.com/v1/api/jobs"}
+  - {name: jooble_api, type: api, language: multi, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://jooble.org/api/"}
+  - {name: usajobs_api, type: api, language: en, priority: tier_c, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://data.usajobs.gov/api/search"}
+  - {name: welcome_to_jungle, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://www.welcometothejungle.com/en/jobs"}
+
+  # Design / creative / writing / media.
+  - {name: behance_jobs, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://www.behance.net/joblist"}
+  - {name: dribbble_jobs, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://dribbble.com/jobs"}
+  - {name: mediabistro, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://www.mediabistro.com/jobs"}
+  - {name: bloggingpro_jobs, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://www.bloggingpro.com/jobs/"}
+  - {name: creativepool_jobs, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://jobs.creativepool.com/jobs/"}
+  - {name: the_dots_jobs, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://the-dots.com/jobs"}
+
+  # Additional catalog, part 2, 2026-09-01. The Otta/WTTJ note from the source
+  # document is intentionally not duplicated: welcome_to_jungle already exists.
+
+  # Verified RSS feeds reachable from the production VPS.
+  - {name: python_org_jobs, type: rss, language: en, priority: tier_a, enabled: true, collector: generic_rss, apply_mode: draft_only, poll_interval: 1800, url: "https://www.python.org/jobs/feed/rss/", options: {limit: 100, skills: [Python]}}
+  - {name: golangprojects, type: rss, language: en, priority: tier_a, enabled: true, collector: generic_rss, apply_mode: draft_only, poll_interval: 3600, url: "https://www.golangprojects.com/rss.xml", options: {limit: 100, skills: [Go, Golang]}}
+  - {name: work_with_indies, type: rss, language: en, priority: tier_a, enabled: true, collector: generic_rss, apply_mode: draft_only, poll_interval: 3600, url: "https://workwithindies.com/careers/rss.xml", options: {limit: 100, skills: [GameDev]}}
+  - {name: coroflot, type: rss, language: en, priority: tier_a, enabled: true, collector: generic_rss, apply_mode: draft_only, poll_interval: 21600, url: "http://feeds.feedburner.com/Coroflot/AllJobs", options: {limit: 100, skills: [Design]}}
+
+  # International freelance marketplaces and vetted talent networks.
+  - {name: fiverr, type: web, language: multi, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://www.fiverr.com/"}
+  - {name: solidgigs, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://solidgigs.com/freelance-jobs/"}
+  - {name: gun_io, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://gun.io/find-work/"}
+  - {name: lemon_io, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://lemon.io/"}
+  - {name: flexiple, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://flexiple.com/"}
+  - {name: clouddevs, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://clouddevs.com/freelance/"}
+  - {name: catalant, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://catalant.com/for-independent-consultants/"}
+  - {name: business_talent_group, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://businesstalentgroup.com/become-an-independent-consultant/"}
+  - {name: graphite_experts, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://www.graphite.com/"}
+  - {name: expert360, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://expert360.com/"}
+  - {name: mayple_experts, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://www.mayple.com/mayple-experts"}
+  - {name: marketerhire, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://marketerhire.com/marketers"}
+  - {name: contently, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://contently.com/register"}
+  - {name: clearvoice, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://www.clearvoice.com/"}
+  - {name: composely, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://www.compose.ly/become-a-writer"}
+  - {name: designhill_jobs, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://www.designhill.com/jobs/freelancer"}
+  - {name: aquent, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://aquent.com/"}
+  - {name: creative_circle, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://www.creativecircle.com/talent/jobs/"}
+  - {name: freelance_nl, type: web, language: nl, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://www.freelance.nl/opdrachten"}
+  - {name: hoofdkraan, type: web, language: nl, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://www.hoofdkraan.nl/"}
+  - {name: jellow, type: web, language: nl, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://www.jellow.nl/voor-freelancers/"}
+  - {name: striive, type: web, language: nl, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://striive.com/nl/opdrachten/"}
+
+  # Remote, tech and niche job boards.
+  - {name: virtual_vocations, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://www.virtualvocations.com/jobs/"}
+  - {name: remote_woman, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://remotewoman.com/jobs/"}
+  - {name: remote4me, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://remote4.me/"}
+  - {name: powertofly, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://powertofly.com/jobs/?location=Remote"}
+  - {name: vuejobs, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://vuejobs.com/jobs"}
+  - {name: justjoinit, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://justjoin.it/job-offers/remote"}
+  - {name: nofluffjobs, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://nofluffjobs.com/"}
+  - {name: landing_jobs, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://landing.jobs/"}
+  - {name: eu_remote_jobs, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://euremotejobs.com/"}
+  - {name: devitjobs, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://devitjobs.com/"}
+  - {name: remote_rocketship, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://www.remoterocketship.com/"}
+  - {name: tech_jobs_for_good, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://techjobsforgood.com/jobs/"}
+  - {name: climatebase_jobs, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://climatebase.org/jobs"}
+  - {name: startup_jobs, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://startup.jobs/"}
+  - {name: flexa_careers, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://flexa.careers/"}
+  - {name: dailyremote, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://dailyremote.com/"}
+  - {name: four_day_week, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://4dayweek.io/"}
+  - {name: jobfluent, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://www.jobfluent.com/"}
+
+  # Web3, crypto, AI and gaming.
+  - {name: web3_career, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://web3.career/"}
+  - {name: remote3, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://www.remote3.co/"}
+  - {name: cryptojobslist, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://cryptojobslist.com/remote"}
+  - {name: cryptocurrency_jobs, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://cryptocurrencyjobs.co/"}
+  - {name: laborx, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://laborx.com/jobs"}
+  - {name: ai_jobs_net, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://aijobs.net/"}
+  - {name: hitmarker, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://hitmarker.net/jobs"}
+  - {name: gamejobsremote, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://gamejobsremote.com/"}
+
+  # Translation, testing and paid research.
+  - {name: proz_jobs, type: web, language: multi, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://www.proz.com/language-jobs"}
+  - {name: translatorscafe, type: web, language: multi, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://www.translatorscafe.com/"}
+  - {name: smartcat_marketplace, type: web, language: multi, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://www.smartcat.com/marketplace/"}
+  - {name: utest_projects, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://www.utest.com/projects"}
+  - {name: testlio, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://testlio.com/job/apply-freelance-tester/"}
+  - {name: testerwork, type: web, language: en, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://testerwork.com/"}
+  - {name: testbirds, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://www.testbirds.com/"}
+  - {name: usertesting, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://www.usertesting.com/get-paid-to-test"}
+  - {name: user_interviews, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://www.userinterviews.com/hello"}
+  - {name: respondent, type: web, language: en, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://www.respondent.io/research-projects"}
+
+  # Additional Russian job boards.
+  - {name: superjob, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://www.superjob.ru/"}
+  - {name: avito_jobs, type: web, language: ru, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://www.avito.ru/rossiya/vakansii"}
+  - {name: trudvsem, type: web, language: ru, priority: tier_b, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 10800, url: "https://trudvsem.ru/"}
+  - {name: careerist, type: web, language: ru, priority: tier_c, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://careerist.ru/"}
+  - {name: gorodrabot, type: web, language: ru, priority: tier_c, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://gorodrabot.ru/"}
+
+  # Russian tenders and procurement. These require a separate eligibility pipeline.
+  - {name: b2b_center, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://www.b2b-center.ru/search-tender/poisk-tenderov/"}
+  - {name: roseltorg, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://www.roseltorg.ru/torgi"}
+  - {name: tender_pro, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://www.tender.pro/"}
+  - {name: rts_tender, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://www.rts-tender.ru/"}
+  - {name: sberbank_ast, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://www.sberbank-ast.ru/"}
+  - {name: mos_supplier_portal, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://tender.mos.ru/suppliers/"}
+  - {name: eis_zakupki, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://zakupki.gov.ru/"}
+  - {name: fabrikant, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://www.fabrikant.ru/"}
+  - {name: tektorg, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://www.tektorg.ru/"}
+  - {name: otc_tenders, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://otc.ru/search/zakaz"}
+  - {name: bidzaar, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://bidzaar.com/"}

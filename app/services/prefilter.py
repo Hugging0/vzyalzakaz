@@ -94,13 +94,24 @@ NEGATIVE_RULES = {
         "40 hours/week",
         "40 часов",
     },
-    "office": {"office only", "on-site only", "только офис", "работа в офисе"},
+    "office": {
+        "office only",
+        "on-site only",
+        "on-site",
+        "onsite",
+        "in-office",
+        "hybrid",
+        "только офис",
+        "работа в офисе",
+        "гибрид",
+    },
     "relocation": {"relocation required", "обязательная релокация", "переезд обязателен"},
     "unpaid": {"unpaid internship", "неоплачиваемая стажировка"},
     "commission": {"commission only", "только процент"},
     "spam": {"guaranteed income", "гарантированный доход", "без вложений", "легкие деньги"},
     "gambling": {"casino", "gambling", "казино", "ставки на спорт"},
     "coursework": {"coursework", "homework", "курсовая", "дипломная работа", "домашнее задание"},
+    "candidate_profile": {"willing to relocate", "open to relocation"},
 }
 
 
@@ -138,7 +149,17 @@ def evaluate(raw: RawOpportunity, profile: CandidateProfile) -> PrefilterResult:
     score = max(0.0, min(100.0, score))
 
     hard_reject = any(
-        reason in {"office", "relocation", "unpaid", "commission", "spam", "gambling", "coursework"}
+        reason
+        in {
+            "office",
+            "relocation",
+            "unpaid",
+            "commission",
+            "spam",
+            "gambling",
+            "coursework",
+            "candidate_profile",
+        }
         for reason in negatives
     )
     if "full_time" in negatives and profile.avoid.full_time and not formats:

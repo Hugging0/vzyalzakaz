@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 
 from app.config import AppSettings, CandidateProfile, PortfolioProject
-from app.schemas import LLMAnalysis, RawOpportunity
+from app.schemas import LLMAnalysis, ProfileIntake, RawOpportunity
 from app.services.normalizer import normalize_text
 
 logger = logging.getLogger(__name__)
@@ -45,6 +45,26 @@ class OpportunityAnalyzer:
         except Exception:
             logger.exception("Proposal generation failed; using local template")
             return self._deterministic_proposal(raw, analysis, portfolio)
+
+    async def extract_profile(self, text: str) -> ProfileIntake:
+        """Extract only explicit profile facts; the original text remains the source of truth."""
+        if self.settings.llm_provider == "disabled" or not self.settings.llm_api_key:
+            return _deterministic_profile_intake(text)
+        schema = json.dumps(ProfileIntake.model_json_schema(), ensure_ascii=False)
+        prompt = f"""
+Extract a freelancer profile from the Russian or English text below.
+Return only facts stated or unambiguously implied by the author. Never invent experience.
+Normalize technology names to their common spelling. Monetary values are in RUB only when
+the text explicitly uses rubles, ₽ or RUB. Return only JSON matching this schema: {schema}
+
+Text:
+{text[:6000]}
+""".strip()
+        try:
+            return ProfileIntake.model_validate(await self._call_llm(prompt))
+        except Exception:
+            logger.exception("Profile intake extraction failed; using local extraction")
+            return _deterministic_profile_intake(text)
 
     async def _call_llm(self, prompt: str, json_mode: bool = True) -> dict | str:
         base_url = (
@@ -128,7 +148,7 @@ Return only the proposal text.
         text = normalize_text(f"{raw.title} {raw.description} {raw.raw_text}")
         candidate_skills = self.profile.candidate.skills
         matched = [skill for skill in candidate_skills if normalize_text(skill) in text]
-        fit = min(95, 30 + len(matched) * 9 + (12 if portfolio else 0))
+        fit = min(96, 52 + len(matched) * 11 + (8 if portfolio else 0))
         full_time = any(term in text for term in ("full time", "full-time", "полная занятость", "40 hours"))
         office = any(term in text for term in ("office only", "on site", "только офис", "в офисе"))
         if full_time:
@@ -152,7 +172,11 @@ Return only the proposal text.
         else:
             money, budget_quality = 20, "low"
 
-        win = min(85, 25 + len(matched) * 8 + (15 if portfolio else 0))
+        win = min(90, 45 + len(matched) * 9 + (12 if portfolio else 0))
+        if full_time:
+            win -= 25
+        if office:
+            win -= 30
         risks = []
         if not expected:
             risks.append("Бюджет не указан")
@@ -176,7 +200,7 @@ Return only the proposal text.
             recommended_portfolio_project=portfolio.slug if portfolio else "",
             fit_score=max(0, fit),
             money_score=money,
-            win_score=win,
+            win_score=max(0, win),
         )
 
     def _deterministic_proposal(
@@ -192,3 +216,57 @@ Return only the proposal text.
             "Могу предложить этапы и оценку после короткого уточнения: какие сервисы уже используются "
             "и есть ли доступ к их API? Какой результат будет считаться готовым для первого этапа?"
         )[:1200]
+
+
+def _deterministic_profile_intake(text: str) -> ProfileIntake:
+    normalized = normalize_text(text)
+    vocabulary = {
+        "Python": ("python", "питон"),
+        "JavaScript": ("javascript", "js"),
+        "TypeScript": ("typescript", "ts"),
+        "React": ("react", "реакт"),
+        "Next.js": ("next.js", "nextjs"),
+        "Vue": ("vue", "vue.js"),
+        "Node.js": ("node.js", "nodejs"),
+        "FastAPI": ("fastapi",),
+        "Django": ("django", "джанго"),
+        "PostgreSQL": ("postgresql", "postgres"),
+        "Docker": ("docker", "докер"),
+        "Telegram bots": ("telegram bot", "telegram-бот", "телеграм-бот", "ботов"),
+        "UI/UX": ("ui/ux", "ux/ui", "интерфейс"),
+        "Figma": ("figma", "фигма"),
+        "Web design": ("web design", "веб-дизайн"),
+        "Branding": ("branding", "брендинг", "айдентик"),
+        "SMM": ("smm", "смм"),
+        "SEO": ("seo", "сео"),
+        "Copywriting": ("copywriting", "копирайт", "тексты"),
+        "Video editing": ("video editing", "монтаж", "видеомонтаж"),
+        "Motion design": ("motion design", "моушн"),
+        "AI Agents": ("ai agent", "ии-агент", "ai-агент"),
+        "LLM API": ("llm", "gpt", "deepseek"),
+        "n8n": ("n8n",),
+        "Make": ("make.com",),
+        "API integrations": ("api", "интеграц"),
+    }
+    skills = [name for name, aliases in vocabulary.items() if any(alias in normalized for alias in aliases)]
+    specialties = []
+    groups = (
+        ("Разработка", ("разработ", "frontend", "backend", "сайт", "приложен", "python")),
+        ("AI и автоматизация", ("автоматизац", "ai", "ии ", "llm", "n8n")),
+        ("Дизайн", ("дизайн", "ui", "ux", "figma", "айдентик")),
+        ("Маркетинг", ("маркет", "smm", "seo", "реклам")),
+        ("Видео", ("видео", "монтаж", "motion", "моушн")),
+        ("Тексты", ("копирай", "редактор", "тексты", "стать")),
+    )
+    for name, aliases in groups:
+        if any(alias in normalized for alias in aliases):
+            specialties.append(name)
+    rub_values = [
+        int(value.replace(" ", ""))
+        for value in re.findall(r"(\d[\d ]{2,8})\s*(?:₽|руб|rub)", normalized)
+    ]
+    return ProfileIntake(
+        skills=skills,
+        specialties=specialties[:3],
+        minimum_project_rub=rub_values[0] if rub_values else None,
+    )

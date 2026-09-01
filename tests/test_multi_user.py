@@ -8,7 +8,15 @@ from app.database import make_engine
 from app.models import Base, TelegramUser, UserOpportunity
 from app.schemas import RawOpportunity
 from app.services.pipeline import OpportunityPipeline
-from app.services.recommendations import RecommendationService
+from app.services.recommendations import RecommendationService, personalized_match_score
+
+
+def test_personalized_match_score_is_calibrated_for_product_thresholds():
+    feed_match = personalized_match_score(63, 98, 45, 54, 0)
+    realtime_match = personalized_match_score(85, 98, 45, 72, 100)
+
+    assert 60 <= feed_match < 82
+    assert realtime_match >= 82
 
 
 @pytest.mark.asyncio

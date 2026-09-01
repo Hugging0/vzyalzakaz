@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { AppButton } from "@/components/ui/AppButton";
+import { AppBadge } from "@/components/ui/AppBadge";
 import { AppCard } from "@/components/ui/AppCard";
 import { AppNotice } from "@/components/ui/AppNotice";
 import { miniAppApi } from "@/lib/api/client";
@@ -16,7 +17,7 @@ export function LeadDetailsView({ lead, onBack }: { lead: Lead; onBack: () => vo
   const save = useMutation({ mutationFn: () => miniAppApi.updateProposal(lead.id, proposal) });
   const markSent = useMutation({ mutationFn: () => miniAppApi.markSent(lead.id), onSuccess: () => { telegramBridge.hapticSuccess(); queryClient.invalidateQueries({ queryKey: ["leads"] }); } });
   useEffect(() => { window.scrollTo(0, 0); }, []);
-  return <><header className="app-header"><AppButton variant="ghost" onClick={onBack} aria-label="Назад"><ArrowLeft size={18} /></AppButton><span className="match-score">{lead.matchScore}% совпадение</span></header>
+  return <><header className="app-header"><AppButton variant="ghost" onClick={onBack} aria-label="Назад"><ArrowLeft size={18} /></AppButton><AppBadge tone="pink">Совпадение {lead.matchScore}%</AppBadge></header>
     <h1 className="detail-title">{lead.title}</h1><p className="lead-meta">{lead.budgetLabel} · {lead.source}</p>
     <div className="stack detail-stack"><AppCard><h2>Почему подходит</h2><ul className="reason-list">{lead.fitReasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>{lead.requiredSkills.length > 0 && <p className="small muted">Нужные навыки: {lead.requiredSkills.join(", ")}</p>}</AppCard>
       {lead.risks.length > 0 && <AppNotice tone="warning">{lead.risks[0]}</AppNotice>}

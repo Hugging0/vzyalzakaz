@@ -34,12 +34,25 @@ class ProfileUpdate(BaseModel):
         default=None, validation_alias=AliasChoices("hourly_rate", "hourlyRate"), ge=0, le=1_000_000
     )
     match_threshold: float | None = Field(
-        default=None, validation_alias=AliasChoices("match_threshold", "matchThreshold"), ge=0, le=100
+        default=None,
+        validation_alias=AliasChoices("match_threshold", "matchThreshold"),
+        ge=60,
+        le=95,
     )
     specialties: list[str] | None = Field(default=None, max_length=20)
     project_types: list[str] | None = Field(default=None, max_length=20)
     onboarding_completed: bool | None = Field(
         default=None, validation_alias=AliasChoices("onboarding_completed", "onboardingCompleted")
+    )
+
+
+class OnboardingCreate(BaseModel):
+    about: str = Field(min_length=20, max_length=6_000)
+    minimum_budget: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("minimum_budget", "minimumBudget"),
+        ge=0,
+        le=100_000_000,
     )
 
 
@@ -128,8 +141,18 @@ async def mini_app_auth(payload: TelegramAuthRequest, request: Request) -> dict:
         user = await session.scalar(
             select(TelegramUser).where(TelegramUser.telegram_user_id == int(telegram_data["id"]))
         )
-    if not user:
-        raise HTTPException(403, "Open the bot and run /start before opening the Mini App")
+        if not user:
+            allowed = await request.app.state.runtime.recommendations.can_register(
+                session, int(telegram_data["id"])
+            )
+            if not allowed:
+                raise HTTPException(
+                    403,
+                    "Регистрация по приглашениям. Сначала активируйте приглашение в боте.",
+                )
+            user = await request.app.state.runtime.recommendations.register_user(
+                session, telegram_data
+            )
     return {"token": create_session_token(user.telegram_user_id, settings)}
 
 
@@ -171,7 +194,6 @@ async def update_profile(
         profile.economics.target_hourly_rub = payload.hourly_rate
     if payload.match_threshold is not None:
         profile.ranking.realtime_threshold = payload.match_threshold
-        profile.ranking.digest_threshold = min(profile.ranking.digest_threshold, payload.match_threshold)
     raw_profile = profile.model_dump()
     ui = dict((db_user.profile or {}).get("ui", {}))
     if payload.specialties is not None:
@@ -182,9 +204,31 @@ async def update_profile(
         ui["onboarding_completed"] = payload.onboarding_completed
     raw_profile["ui"] = ui
     db_user.profile = raw_profile
-    await request.app.state.runtime.recommendations.reset_recommendations(session, db_user)
-    await request.app.state.runtime.recommendations.backfill_user(session, db_user)
+    ranking_fields = {"skills", "languages", "about", "minimum_budget", "hourly_rate"}
+    should_rescore = bool(payload.model_fields_set & ranking_fields)
+    if should_rescore:
+        await request.app.state.runtime.recommendations.reset_recommendations(session, db_user)
+        await request.app.state.runtime.recommendations.backfill_user(session, db_user)
+    else:
+        await session.commit()
     await session.refresh(db_user)
+    return _profile_payload(db_user)
+
+
+@router.post("/app/onboarding")
+async def complete_onboarding(
+    payload: OnboardingCreate,
+    request: Request,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    db_user = await session.get(TelegramUser, user.id)
+    await request.app.state.runtime.recommendations.apply_profile_intake(
+        session,
+        db_user,
+        payload.about,
+        minimum_budget=payload.minimum_budget,
+    )
     return _profile_payload(db_user)
 
 

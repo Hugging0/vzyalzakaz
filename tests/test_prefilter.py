@@ -53,3 +53,33 @@ def test_farsi_project_passes(profile):
         remote=True,
     )
     assert evaluate(raw, profile).passed
+
+
+def test_candidate_resume_is_rejected(profile):
+    raw = RawOpportunity(
+        source="hackernews",
+        source_type="web",
+        external_id="candidate-1",
+        title="Location: Berlin — Python developer",
+        raw_text="Remote: Yes. Willing to relocate: Yes. Python, FastAPI.",
+    )
+
+    result = evaluate(raw, profile)
+
+    assert not result.passed
+    assert "candidate_profile" in result.negative_matches
+
+
+def test_hybrid_role_is_rejected_for_remote_profile(profile):
+    raw = RawOpportunity(
+        source="hackernews",
+        source_type="web",
+        external_id="hybrid-1",
+        title="Python engineer — hybrid",
+        raw_text="Python backend role, three days per week in-office.",
+    )
+
+    result = evaluate(raw, profile)
+
+    assert not result.passed
+    assert "office" in result.negative_matches

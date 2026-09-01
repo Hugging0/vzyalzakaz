@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import AppSettings, Candidate, CandidateProfile, PortfolioProject
@@ -10,7 +10,7 @@ from app.models import Opportunity, OpportunityStatus, TelegramUser, UserOpportu
 from app.schemas import RawOpportunity
 from app.services.portfolio import select_portfolio
 from app.services.prefilter import evaluate
-from app.services.ranking import final_score, freshness_score
+from app.services.ranking import freshness_score
 from app.services.scoring import OpportunityAnalyzer
 
 
@@ -74,11 +74,71 @@ class RecommendationService:
             select(TelegramUser).where(TelegramUser.telegram_user_id == telegram_user_id)
         )
 
+    async def can_register(
+        self,
+        session: AsyncSession,
+        telegram_user_id: int,
+        invite_code: str | None = None,
+    ) -> bool:
+        if telegram_user_id == self.settings.telegram_owner_id:
+            return True
+        count = await session.scalar(select(func.count()).select_from(TelegramUser)) or 0
+        if count >= self.settings.max_users:
+            return False
+        if self.settings.registration_mode == "open":
+            return True
+        if self.settings.registration_mode == "closed":
+            return False
+        return bool(
+            self.settings.registration_invite_code
+            and invite_code == self.settings.registration_invite_code
+        )
+
     def profile_for(self, user: TelegramUser) -> CandidateProfile:
         return CandidateProfile.model_validate(user.profile)
 
     def portfolio_for(self, user: TelegramUser) -> list[PortfolioProject]:
         return [PortfolioProject.model_validate(item) for item in (user.portfolio or [])]
+
+    async def apply_profile_intake(
+        self,
+        session: AsyncSession,
+        user: TelegramUser,
+        text: str,
+        *,
+        minimum_budget: int | None = None,
+    ) -> TelegramUser:
+        """Turn one natural-language introduction into a usable search profile."""
+        profile = self.profile_for(user)
+        intake = await OpportunityAnalyzer(self.settings, profile).extract_profile(text)
+        profile.candidate.about = text.strip()[:6000]
+        profile.candidate.skills = list(dict.fromkeys([*profile.candidate.skills, *intake.skills]))[:100]
+        profile.candidate.languages = list(
+            dict.fromkeys([*profile.candidate.languages, *intake.languages])
+        )[:10]
+        if minimum_budget is not None:
+            profile.economics.minimum_project_rub = minimum_budget
+        elif intake.minimum_project_rub is not None:
+            profile.economics.minimum_project_rub = intake.minimum_project_rub
+        if intake.target_hourly_rub is not None:
+            profile.economics.target_hourly_rub = intake.target_hourly_rub
+
+        raw_profile = profile.model_dump()
+        ui = dict((user.profile or {}).get("ui", {}))
+        ui.update(
+            {
+                "specialties": intake.specialties,
+                "onboarding_completed": True,
+                "intake_state": None,
+            }
+        )
+        raw_profile["ui"] = ui
+        user.profile = raw_profile
+        await session.commit()
+        await self.reset_recommendations(session, user)
+        await self.backfill_user(session, user)
+        await session.refresh(user)
+        return user
 
     async def ensure_match(
         self,
@@ -96,6 +156,8 @@ class RecommendationService:
             return existing
 
         profile = self.profile_for(user)
+        if not source_matches_specialties(user, opportunity):
+            return None
         raw = _to_raw(opportunity)
         prefilter = evaluate(raw, profile)
         if not prefilter.passed:
@@ -107,6 +169,8 @@ class RecommendationService:
         )
         local_settings = self.settings.model_copy(update={"llm_provider": "disabled", "llm_api_key": None})
         personalized = await OpportunityAnalyzer(local_settings, profile).analyze(raw, portfolio_item)
+        if not personalized.required_skills:
+            return None
         analysis = dict(opportunity.analysis or {})
         analysis.update(
             {
@@ -116,17 +180,17 @@ class RecommendationService:
                 "recommended_portfolio_project": portfolio_item.slug if portfolio_item else "",
             }
         )
-        money = opportunity.money_score if opportunity.money_score is not None else personalized.money_score
+        money = personalized.money_score
         effort = opportunity.estimated_effort_hours or personalized.estimated_hours or None
         fresh = freshness_score(opportunity.published_at)
-        score = final_score(
+        score = personalized_match_score(
             personalized.fit_score,
+            prefilter.score,
             money,
             personalized.win_score,
             fresh,
-            profile.ranking,
         )
-        if score < profile.ranking.digest_threshold:
+        if score < min(profile.ranking.digest_threshold, 60):
             return None
 
         effective_rate = None
@@ -201,6 +265,45 @@ class RecommendationService:
         match.approved_at = datetime.now(UTC)
         await session.commit()
         return proposal
+
+
+def personalized_match_score(
+    fit: float,
+    prefilter: float,
+    money: float,
+    win: float,
+    freshness: float,
+) -> float:
+    """Calibrated match score shown as a percentage in the personal product UI."""
+    score = fit * 0.55 + prefilter * 0.20 + money * 0.10 + win * 0.10 + freshness * 0.05
+    return round(max(0.0, min(100.0, score)), 2)
+
+
+def source_matches_specialties(user: TelegramUser, opportunity: Opportunity) -> bool:
+    specialties = set((user.profile or {}).get("ui", {}).get("specialties", []))
+    if not specialties:
+        profile = CandidateProfile.model_validate(user.profile)
+        skills = " ".join(profile.candidate.skills).casefold()
+        inferred = {
+            "Разработка": ("python", "fastapi", "django", "react", "javascript", "typescript"),
+            "Дизайн": ("figma", "ui/ux", "web design", "branding"),
+            "Маркетинг": ("smm", "seo", "marketing"),
+            "Тексты": ("copywriting", "content", "editor"),
+            "Видео": ("video", "motion"),
+        }
+        specialties = {
+            name for name, markers in inferred.items() if any(marker in skills for marker in markers)
+        }
+    if not specialties:
+        return True
+    source = opportunity.source.casefold()
+    if "marketing" in source:
+        return "Маркетинг" in specialties
+    if "copywriting" in source:
+        return "Тексты" in specialties
+    if "design" in source:
+        return bool({"Дизайн", "Видео"} & specialties)
+    return True
 
 
 def _to_raw(opportunity: Opportunity) -> RawOpportunity:

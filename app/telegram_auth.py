@@ -3,21 +3,17 @@ from __future__ import annotations
 import asyncio
 import getpass
 
-from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError
 
 from app.config import get_settings
+from app.telegram.client import create_user_client
 
 
 async def authorize() -> None:
     settings = get_settings()
     if not settings.telegram_user_ready or not settings.telegram_phone:
         raise SystemExit("Set TELEGRAM_API_ID, TELEGRAM_API_HASH and TELEGRAM_PHONE in .env first")
-    client = TelegramClient(
-        settings.telegram_session_path,
-        settings.telegram_api_id,
-        settings.telegram_api_hash,
-    )
+    client = create_user_client(settings)
     await client.connect()
     if await client.is_user_authorized():
         print("Telegram session is already authorized.")
