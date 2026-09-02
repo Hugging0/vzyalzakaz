@@ -285,8 +285,13 @@ HH.ru adapter включён в код, но в стартовом конфиг�
 6. Резервно копируйте volume PostgreSQL и volume `telegram_data`.
 7. Не публикуйте `JOBHUNTER_PORT`; наружу нужен только `HTTP_PORT` (80/443 через Nginx).
 8. До подключения домена оставьте `MINI_APP_URL` пустым и `ALLOW_DEV_AUTH=false`.
-9. После покупки домена направьте A-запись на VPS, выпустите TLS-сертификат,
-   задайте HTTPS `PUBLIC_BASE_URL` и `MINI_APP_URL`, затем обновите menu button в BotFather.
+9. Направьте A-записи `vzyalzakaz.ru`, `www.vzyalzakaz.ru` и `tg.vzyalzakaz.ru`
+   на VPS, выпустите единый TLS-сертификат, задайте
+   `PUBLIC_BASE_URL=https://vzyalzakaz.ru` и
+   `MINI_APP_URL=https://vzyalzakaz.ru/app`, затем обновите menu button в BotFather.
+10. Установите `ops/systemd/vzyalzakaz-cert-renew.*` и включите timer для
+    автоматического продления сертификата. Скрипт продления использует ACME
+    webroot volume и после успешной проверки перезагружает Nginx.
 
 При последующем горизонтальном масштабировании bot polling и collectors нужно
 вынести в отдельный worker с distributed lock. Текущая конфигурация рассчитана

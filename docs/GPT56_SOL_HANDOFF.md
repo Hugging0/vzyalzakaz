@@ -20,7 +20,7 @@
 | Область | Состояние |
 |---|---|
 | Git | `main`, remote `git@github.com:Hugging0/vzyalzakaz.git`; каждую завершённую задачу тестировать, коммитить и push. |
-| Production | `tg.vzyalzakaz.ru`, Docker Compose + Nginx TLS. Текущий Web/PWA sprint не развёрнут до visual approval владельца. |
+| Production | `https://vzyalzakaz.ru/app`, Docker Compose + Nginx TLS. `/` временно отвечает `302` на `/app`; `www` и прежний `tg` канонически ведут на корневой домен. |
 | Backend | FastAPI, SQLAlchemy async, PostgreSQL, Alembic. |
 | Frontend | Next.js 16, React 19, TanStack Query, responsive Web/PWA. |
 | Bot | Bot API long polling, цветные inline-кнопки через единый builder. |
@@ -161,7 +161,7 @@ WEB_SESSION_COOKIE_NAME=vzyalzakaz_session
 TELEGRAM_BOT_USERNAME=vzyal_zakaz_bot
 ```
 
-Для production нужны согласованные HTTPS `PUBLIC_BASE_URL` и `MINI_APP_URL`. Cookie автоматически получает `Secure`, когда любой из этих публичных адресов использует `https://`.
+Production использует `PUBLIC_BASE_URL=https://vzyalzakaz.ru` и `MINI_APP_URL=https://vzyalzakaz.ru/app`. Cookie автоматически получает `Secure`, когда любой из этих публичных адресов использует `https://`.
 
 ## 7. Проверки и незавершённое
 
@@ -175,7 +175,7 @@ cd frontend && npm run lint
 cd frontend && npm run build
 ```
 
-Владелец явно попросил не выполнять visual QA. Поэтому до production deployment остаются его проверки:
+Владелец явно попросил не выполнять visual QA и самостоятельно проверить графику уже на production. Поэтому после публикации остаются его проверки:
 
 - desktop, tablet, mobile `360px`;
 - standalone install/open;
@@ -186,7 +186,7 @@ cd frontend && npm run build
 
 Замечания владельца исправить отдельным focused commit. Не выдавать отсутствие screenshot QA за подтверждение визуальной готовности.
 
-## 8. Production deployment после visual approval
+## 8. Production deployment
 
 Только для уже pushed commit:
 
@@ -200,6 +200,16 @@ cd frontend && npm run build
 8. создать и push annotated tag `prod-YYYYMMDD-HHMM-web-pwa`.
 
 Git rollback не откатывает migration, data, `.env`, Nginx и SOCKS5. Эти внешние изменения всегда фиксировать отдельно.
+
+### Домен и TLS
+
+- основной origin: `https://vzyalzakaz.ru`;
+- PWA: `https://vzyalzakaz.ru/app`;
+- `/` использует временный `302` на `/app`, чтобы позднее без закэшированного permanent redirect поставить SEO-страницу;
+- сертификат Let’s Encrypt `vzyalzakaz.ru` включает SAN для `www.vzyalzakaz.ru` и `tg.vzyalzakaz.ru`;
+- `ops/certbot-renew.sh` продлевает основной сертификат и перезагружает Nginx;
+- systemd timer из `ops/systemd/` запускает проверку продления дважды в сутки;
+- production dump хранится вне Git в `/opt/hunt-agent-backups` с правами `600`.
 
 ## 9. Важные файлы
 

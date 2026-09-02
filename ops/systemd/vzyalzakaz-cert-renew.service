@@ -1,0 +1,8 @@
+[Unit]
+Description=Renew the vzyalzakaz.ru TLS certificate
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/hunt-agent/ops/certbot-renew.sh
