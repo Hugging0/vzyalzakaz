@@ -15,6 +15,13 @@ depends_on = None
 
 
 def upgrade() -> None:
+    column = next(
+        item
+        for item in sa.inspect(op.get_bind()).get_columns("opportunities")
+        if item["name"] == "country"
+    )
+    if isinstance(column["type"], sa.Text) and column["type"].length is None:
+        return
     op.alter_column(
         "opportunities",
         "country",

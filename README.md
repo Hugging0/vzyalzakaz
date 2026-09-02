@@ -27,14 +27,15 @@ Telegram-бот отвечает за срочные уведомления, б�
 - собственная HttpOnly web session; Telegram `initData` и одноразовая ссылка из бота
   используются как безопасные способы bootstrap-входа;
 - manifest, installable standalone shell и ограниченный offline fallback без кэша API;
+- Chromium Browser Extension: безопасное подключение к PWA, очередь команд и assisted-заполнение форм Freelancer, Freelance.ru, FL.ru и Kwork без автоматического Submit;
 - Nginx reverse proxy: единый адрес для Web/PWA и API;
 - тестовый checkout ЮKassa с idempotency, webhook-проверкой и ручным refresh статуса;
 - `APPROVE` создаёт черновик и открывает контакт — отправка остаётся ручной;
 - аналитика через `/stats` в боте и `GET /api/analytics`;
 - Docker Compose и тесты.
 
-Browser extension для assisted-откликов и массовые API-интеграции оставлены для
-следующего этапа. Backend и экран площадок уже используют capability contract.
+Новые биржи добавляются отдельными adapter-модулями расширения. Массовая отправка и
+автоматический Submit намеренно не поддерживаются.
 
 ## Быстрый запуск
 
@@ -270,6 +271,9 @@ HH.ru adapter включён в код, но в стартовом конфиг�
 - `PATCH /api/app/leads/{id}/status` и `GET .../events` — воронка и история;
 - `GET /api/app/sources` — connection status и capabilities;
 - `/api/app/portfolio`, `/api/app/analytics`, `/api/app/billing`.
+- `/api/app/extension/*` — link-ticket, состояние и отключение расширения;
+- `/api/app/leads/{id}/application-command` — постановка и чтение команды отклика;
+- `/api/extension/*` — собственная token-сессия, heartbeat, команды и безопасная диагностика расширения.
 
 Внешний Nginx проксирует `/api/mini-app/*`, `/api/web/*` и `/api/app/*` вместе с PWA.
 Защищённые маршруты принимают HttpOnly web session или короткую legacy-сессию во
@@ -312,6 +316,22 @@ uvicorn app.main:app --reload
 ```
 
 Для локального SQLite создайте каталог `data`. Production-конфигурация использует PostgreSQL.
+
+Browser Extension:
+
+```bash
+cd extension
+npm install
+cp .env.example .env
+npm test
+npm run typecheck
+npm run build
+```
+
+Распакованная сборка находится в `extension/.output/chrome-mv3`. Для локальной
+проверки откройте `chrome://extensions`, включите режим разработчика и выберите
+«Загрузить распакованное расширение». Полная схема, ограничения и выпуск описаны в
+`docs/BROWSER_EXTENSION_ARCHITECTURE.md`.
 
 ## Безопасность
 

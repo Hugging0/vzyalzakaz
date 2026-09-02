@@ -71,9 +71,42 @@ export interface SourceConnection {
   enabled: boolean;
   connectionStatus: "connected" | "syncing" | "attention" | "available" | "planned";
   submissionType: "manual" | "api" | "browser_extension";
-  capabilities: ("collect" | "quick_apply" | "autofill" | "requires_confirmation")[];
+  capabilities: ("collect" | "quick_apply" | "browser_autofill" | "attachments" | "custom_questions" | "requires_auth" | "requires_confirmation")[];
   lastRunAt: string | null;
   lastError: string | null;
+}
+
+export type ExtensionConnectionState = "CONNECTED" | "OFFLINE" | "NOT_DETECTED" | "ERROR";
+
+export interface ExtensionInstallation {
+  id: string;
+  installationId: string;
+  browser: string;
+  version: string;
+  state: "CONNECTED" | "OFFLINE";
+  activeSourceId: string | null;
+  marketplaceAuthState: "AUTHENTICATED" | "AUTH_REQUIRED" | "UNKNOWN" | "UNSUPPORTED" | null;
+  lastErrorCode: string | null;
+  lastSeenAt: string;
+  expiresAt: string;
+}
+
+export interface ExtensionStatus {
+  state: ExtensionConnectionState;
+  installations: ExtensionInstallation[];
+}
+
+export type ApplicationCommandStatus = "queued" | "delivered" | "opening_page" | "waiting_for_auth" | "page_ready" | "form_found" | "filling" | "partially_filled" | "ready_for_review" | "submitted" | "failed" | "cancelled" | "expired";
+
+export interface ApplicationCommand {
+  id: string;
+  applicationId: number;
+  sourceId: string;
+  jobUrl: string;
+  status: ApplicationCommandStatus;
+  expiresAt: string;
+  result: { adapterVersion?: string; filledCount: number; attentionCount: number; filledFields: string[]; attentionFields: string[] };
+  error: { code: string; message: string | null } | null;
 }
 
 export interface BillingStatus {

@@ -117,7 +117,7 @@ def test_web_login_payload_only_allows_known_workspace_routes():
 
 def test_browser_extension_sources_declare_capabilities(settings):
     sources = {source.name: source for source in settings.load_sources()}
-    for source_name in ("freelance_ru", "fl_ru", "kwork_projects"):
+    for source_name in ("freelancer_com", "freelance_ru", "fl_ru", "kwork_projects"):
         source = sources[source_name]
         assert source.submission_type == "browser_extension"
-        assert {"autofill", "requires_confirmation"}.issubset(source.capabilities)
+        assert {"browser_autofill", "requires_confirmation"}.issubset(source.capabilities)

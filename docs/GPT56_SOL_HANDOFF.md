@@ -118,18 +118,18 @@ GET|POST  /api/app/billing...
 
 Все owned-resource endpoints проверяют `UserOpportunity.user_id`; frontend не передаёт доверенный Telegram user id.
 
-## 5. Источники и extension readiness
+## 5. Источники и Browser Extension
 
 Source of truth: `config/sources.yaml` и `SourceConfig`.
 
 ```text
 submission_type = manual | api | browser_extension
-capabilities = collect | quick_apply | autofill | requires_confirmation
+capabilities = collect | quick_apply | browser_autofill | attachments | custom_questions | requires_auth | requires_confirmation
 ```
 
-`Freelance.ru`, `FL.ru`, `Kwork` объявлены как будущие `browser_extension` connections. Это metadata/UI readiness, не готовое расширение. Их включение как collector запрещено до появления стабильных adapters.
+В Chromium extension реализованы адаптеры `Freelancer`, `Freelance.ru`, `FL.ru` и `Kwork`. Их selectors изолированы в adapter layer; автоматический Submit отсутствует. Сбор заказов с отключённых источников по-прежнему запрещено включать до отдельной проверки collectors.
 
-Следующий extension MVP:
+Реализованный extension flow:
 
 1. отдельная локальная extension auth/session;
 2. fetch принадлежащего пользователю job URL и готового текста;
@@ -142,13 +142,15 @@ Cookies и passwords площадок не отправлять backend. Не о
 
 ## 6. Миграции и конфигурация
 
-Новая migration: `0005_web_sessions`.
+Актуальные migrations: `0005_web_sessions`, `0006_content_classification`, `0007_browser_extension`.
 
 Создаёт:
 
 - `application_events`;
 - `web_login_tickets`;
 - `web_sessions`.
+- `extension_link_tickets`, `extension_installations`;
+- `application_commands`, `extension_diagnostics`.
 
 Контейнер backend запускает `alembic upgrade head` перед Uvicorn. Перед production deployment всё равно сделать backup PostgreSQL и проверить migration log.
 
@@ -218,6 +220,8 @@ PRODUCT.md
 DESIGN.md
 docs/FRONTEND_RULES.md
 docs/WEB_PWA_ARCHITECTURE.md
+docs/BROWSER_EXTENSION_ARCHITECTURE.md
+docs/ADDING_EXTENSION_ADAPTER.md
 docs/GIT_WORKFLOW.md
 docs/SOURCES_STATUS.md
 docs/ROADMAP.md
@@ -233,4 +237,6 @@ frontend/src/components/layout/WorkspaceGate.tsx
 frontend/src/components/layout/WorkspaceShell.tsx
 config/sources.yaml
 migrations/versions/0005_web_sessions.py
+migrations/versions/0007_browser_extension.py
+extension/
 ```

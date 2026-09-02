@@ -8,7 +8,7 @@
 |---|---|
 | Web/PWA | Основной кабинет, навигация, поиск, отклики, профиль, портфолио, площадки, статистика и настройки агента. |
 | Telegram Bot | Сильные новые заказы, быстрые решения, подтверждения и deep links. Не дублирует кабинет. |
-| Browser Extension | Следующий этап: использует локальную браузерную сессию площадки, заполняет форму и останавливается перед Submit. |
+| Browser Extension | Использует локальную браузерную сессию площадки, заполняет известные поля и останавливается перед Submit. |
 | Backend/AI | Единые matching, статусы, генерация отклика, правила источников и журнал событий для всех интерфейсов. |
 
 ## Маршруты
@@ -52,17 +52,18 @@ recommended -> approved -> contacted -> replied -> interview -> won
 
 `contacted` невозможен без сохранённого отклика. UI показывает завершённое действие только после успешного ответа API. Ручные callback-сценарии Telegram не должны менять статус в обход workflow.
 
-## Источники и browser extension readiness
+## Источники и Browser Extension
 
 `SourceConfig` является source of truth:
 
 - `submission_type`: `manual`, `api`, `browser_extension`;
-- `capabilities`: `collect`, `quick_apply`, `autofill`, `requires_confirmation`;
+- `capabilities`: `collect`, `quick_apply`, `browser_autofill`, `attachments`, `custom_questions`, `requires_auth`, `requires_confirmation`;
+- `adapter_id` и `application_hosts`: идентификатор адаптера и строгий allowlist доменов;
 - `apply_mode`: существующее серверное ограничение отправки.
 
-`GET /api/app/sources` отдаёт нормализованные capabilities и connection status. UI только отображает контракт и не определяет возможности по имени площадки. Для `Freelance.ru`, `FL.ru` и `Kwork` уже объявлена будущая модель `browser_extension` с `autofill` и `requires_confirmation`.
+`GET /api/app/sources` отдаёт нормализованные capabilities и connection status. UI только отображает контракт и не определяет возможности по имени площадки. Адаптеры `Freelancer`, `Freelance.ru`, `FL.ru` и `Kwork` реализованы в extension; сбор заказов с трёх последних остаётся выключенным до отдельной проверки collectors.
 
-Следующий этап extension обязан соблюдать границы:
+Extension соблюдает границы:
 
 - cookies и пароли площадки остаются в браузере пользователя;
 - backend выдаёт команду только для принадлежащего пользователю заказа и готового текста;
@@ -70,6 +71,8 @@ recommended -> approved -> contacted -> replied -> interview -> won
 - первая версия не нажимает финальный Submit;
 - результат и ошибка возвращаются в общий `ApplicationEvent`;
 - selectors и adapters живут в extension, а не в Web UI.
+
+Одноразовый link-ticket связывает уже авторизованный PWA с отдельной сессией расширения. Токены и link codes хранятся на сервере только как SHA-256 hashes. Команды имеют idempotency key, TTL, владельца и строгий lifecycle. Service worker отправляет heartbeat и забирает задачу каждые 30 секунд через `chrome.alarms`; PWA дополнительно может разбудить установленное расширение после постановки команды. Подробный контракт находится в `docs/BROWSER_EXTENSION_ARCHITECTURE.md`.
 
 ## PWA
 

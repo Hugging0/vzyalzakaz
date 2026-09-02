@@ -9,6 +9,7 @@ import { AppBadge } from "@/components/ui/AppBadge";
 import { AppButton } from "@/components/ui/AppButton";
 import { AppCard } from "@/components/ui/AppCard";
 import { AppEmptyState, FeedSkeleton } from "@/components/ui/States";
+import { ApplicationCommandPanel } from "@/components/features/applications/ApplicationCommandPanel";
 import { miniAppApi } from "@/lib/api/client";
 import { mapLeadDtoToLead } from "@/lib/mappers/lead.mapper";
 
@@ -30,7 +31,7 @@ export function OrderDetailsPage({ id }: { id: number }) {
           <AppCard><h2>Почему подходит</h2><ul className="reason-list">{lead.fitReasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>{lead.requiredSkills.length > 0 && <p className="muted">Навыки: {lead.requiredSkills.join(", ")}</p>}</AppCard>
           <AppCard><h2>Описание</h2><p className="detail-description">{lead.description || "В источнике нет подробного описания."}</p>{lead.sourceUrl && <a className="text-link" href={lead.sourceUrl} target="_blank" rel="noreferrer">Открыть источник <ExternalLink size={16} /></a>}</AppCard>
         </div>
-        <aside className="detail-side"><AppCard tone="yellow"><h2>Следующее действие</h2><p>Подготовьте черновик. Отправка останется под вашим контролем.</p><div className="stack-actions"><AppButton disabled={prepare.isPending} onClick={() => lead.proposal ? router.push(`/app/applications/${id}`) : prepare.mutate()}>{prepare.isPending ? "Готовим текст" : lead.proposal ? "Открыть отклик" : "Подготовить отклик"}</AppButton><AppButton variant="ghost" disabled={skip.isPending} onClick={() => skip.mutate()}>Не подходит</AppButton></div></AppCard>{lead.risks.length > 0 && <AppCard tone="blue"><h2>Что проверить</h2><p>{lead.risks[0]}</p></AppCard>}</aside>
+        <aside className="detail-side"><AppCard tone="yellow"><h2>Следующее действие</h2><p>Подготовьте текст или сразу перенесите его в форму площадки.</p><div className="stack-actions"><AppButton disabled={prepare.isPending} onClick={() => lead.proposal ? router.push(`/app/applications/${id}`) : prepare.mutate()}>{prepare.isPending ? "Готовим текст" : lead.proposal ? "Открыть текст" : "Подготовить текст"}</AppButton><AppButton variant="ghost" disabled={skip.isPending} onClick={() => skip.mutate()}>Не подходит</AppButton></div></AppCard><ApplicationCommandPanel id={id} source={lead.source} sourceUrl={lead.sourceUrl} />{lead.risks.length > 0 && <AppCard tone="blue"><h2>Что проверить</h2><p>{lead.risks[0]}</p></AppCard>}</aside>
       </div>
     </>
   );

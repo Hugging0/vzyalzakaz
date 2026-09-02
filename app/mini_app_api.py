@@ -614,8 +614,11 @@ async def list_sources(
         capabilities = list(dict.fromkeys(source.capabilities))
         if source.apply_mode in {"send_allowed", "api_allowed"} and "quick_apply" not in capabilities:
             capabilities.append("quick_apply")
-        if source.submission_type == "browser_extension" and "autofill" not in capabilities:
-            capabilities.append("autofill")
+        if (
+            source.submission_type == "browser_extension"
+            and "browser_autofill" not in capabilities
+        ):
+            capabilities.append("browser_autofill")
         result.append(
             {
                 "name": source.name,

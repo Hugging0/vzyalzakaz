@@ -1,4 +1,4 @@
-import type { ApplicationEvent, BillingStatus, LeadStatus, PersonalAnalytics, PortfolioCase, Profile, SourceConnection } from "@/types/domain";
+import type { ApplicationCommand, ApplicationEvent, BillingStatus, ExtensionStatus, LeadStatus, PersonalAnalytics, PortfolioCase, Profile, SourceConnection } from "@/types/domain";
 
 const sessionKey = "hunt-agent-session";
 
@@ -56,6 +56,11 @@ export const miniAppApi = {
   updatePortfolio: (slug: string, item: Partial<Omit<PortfolioCase, "slug">>) => request<PortfolioCase>(`/api/app/portfolio/${encodeURIComponent(slug)}`, { method: "PATCH", body: JSON.stringify(item) }),
   deletePortfolio: (slug: string) => request<{ deleted: boolean }>(`/api/app/portfolio/${encodeURIComponent(slug)}`, { method: "DELETE" }),
   sources: () => request<SourceConnection[]>("/api/app/sources"),
+  extensionStatus: () => request<ExtensionStatus>("/api/app/extension/status"),
+  createExtensionLink: () => request<{ code: string; expiresAt: string }>("/api/app/extension/link-tickets", { method: "POST" }),
+  disconnectExtension: (installationId: string) => request<{ disconnected: boolean }>(`/api/app/extension/installations/${encodeURIComponent(installationId)}`, { method: "DELETE" }),
+  queueApplication: (id: number, idempotencyKey: string) => request<ApplicationCommand>(`/api/app/leads/${id}/application-command`, { method: "POST", headers: { "Idempotency-Key": idempotencyKey } }),
+  applicationCommand: (id: number) => request<ApplicationCommand | null>(`/api/app/leads/${id}/application-command`),
   setAgentActive: (isActive: boolean) => request<Profile>("/api/app/agent", { method: "PATCH", body: JSON.stringify({ is_active: isActive }) }),
   billing: () => request<BillingStatus>("/api/app/billing"),
   createCheckout: (idempotencyKey: string) => request<BillingStatus>("/api/app/billing/checkout", { method: "POST", headers: { "Idempotency-Key": idempotencyKey } }),

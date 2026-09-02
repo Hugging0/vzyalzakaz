@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from app.api import router
 from app.config import get_settings
 from app.database import SessionLocal, engine
+from app.extension_api import router as extension_router
 from app.mini_app_api import router as mini_app_router
 from app.models import Base
 from app.runtime import Runtime
@@ -43,6 +44,7 @@ app = FastAPI(
 )
 app.include_router(router)
 app.include_router(mini_app_router)
+app.include_router(extension_router)
 
 
 @app.get("/", include_in_schema=False)

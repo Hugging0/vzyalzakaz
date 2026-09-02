@@ -76,8 +76,21 @@ class SourceConfig(BaseModel):
     display_name: str | None = None
     submission_type: Literal["manual", "api", "browser_extension"] = "manual"
     capabilities: list[
-        Literal["collect", "quick_apply", "autofill", "requires_confirmation"]
+        Literal[
+            "collect",
+            "quick_apply",
+            "autofill",
+            "browser_autofill",
+            "browser_submit",
+            "application_status_tracking",
+            "attachments",
+            "custom_questions",
+            "requires_auth",
+            "requires_confirmation",
+        ]
     ] = Field(default_factory=lambda: ["collect", "requires_confirmation"])
+    adapter_id: str | None = None
+    application_hosts: list[str] = Field(default_factory=list)
     content_policy: Literal["mixed", "demand_only"] = "mixed"
     poll_interval: int = 1800
     url: str | None = None
@@ -145,6 +158,10 @@ class AppSettings(BaseSettings):
     web_session_cookie_name: str = "vzyalzakaz_session"
     allow_dev_auth: bool = False
     dev_telegram_user_id: int | None = None
+    extension_link_ticket_ttl_seconds: int = 300
+    extension_session_ttl_seconds: int = 7_776_000
+    extension_command_ttl_seconds: int = 900
+    extension_offline_after_seconds: int = 120
 
     public_base_url: str | None = None
     yookassa_shop_id: str | None = None

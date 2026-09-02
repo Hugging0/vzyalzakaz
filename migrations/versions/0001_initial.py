@@ -15,8 +15,22 @@ depends_on = None
 
 
 def upgrade() -> None:
-    Base.metadata.create_all(bind=op.get_bind())
+    bind = op.get_bind()
+    for table_name in (
+        "opportunities",
+        "source_occurrences",
+        "collector_runs",
+        "contact_logs",
+    ):
+        Base.metadata.tables[table_name].create(bind=bind, checkfirst=True)
 
 
 def downgrade() -> None:
-    Base.metadata.drop_all(bind=op.get_bind())
+    bind = op.get_bind()
+    for table_name in (
+        "contact_logs",
+        "collector_runs",
+        "source_occurrences",
+        "opportunities",
+    ):
+        Base.metadata.tables[table_name].drop(bind=bind, checkfirst=True)

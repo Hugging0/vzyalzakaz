@@ -1,0 +1,63 @@
+:root {
+  color-scheme: light;
+  --bg: #f6f3ec;
+  --paper: #fffdfa;
+  --ink: #17223d;
+  --muted: #5c6272;
+  --pink: #ed4569;
+  --blue: #dfe7ff;
+  --yellow: #f4e3a6;
+  --mint: #dceadf;
+  --danger: #b82643;
+  --radius-block: 18px 6px 18px 6px;
+  --radius-control: 10px 4px 10px 4px;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { min-width: 380px; min-height: 180px; margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 16px/1.5 "Golos Text", system-ui, sans-serif; }
+button, input { font: inherit; }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--pink); outline-offset: 3px; }
+h1, h2, p { margin: 0; text-wrap: pretty; }
+h1, h2 { font-family: "Unbounded", "Golos Text", sans-serif; }
+
+.popup-shell { width: 380px; display: grid; gap: 12px; padding: 16px; }
+.popup-head { display: flex; align-items: center; gap: 12px; padding: 2px; }
+.popup-head h1 { font-size: 18px; line-height: 1.25; letter-spacing: -.02em; }
+.popup-head p { margin-top: 2px; color: var(--muted); font-size: 13px; line-height: 18px; }
+.ext-logo { width: 42px; height: 42px; flex: none; display: grid; place-items: center; border: 2px solid var(--ink); border-radius: 12px 4px 12px 4px; background: var(--pink); box-shadow: 2px 2px 0 var(--ink); }
+.ext-logo svg { width: 24px; height: 24px; stroke-width: 2.4; }
+.ext-card { display: grid; gap: 12px; border: 2px solid var(--ink); border-radius: var(--radius-block); padding: 16px; background: var(--paper); box-shadow: 3px 3px 0 var(--ink); }
+.ext-card--blue { background: var(--blue); }
+.ext-card--yellow { background: var(--yellow); }
+.ext-card--mint { background: var(--mint); }
+.ext-card h2 { font-size: 16px; line-height: 1.35; letter-spacing: -.015em; overflow-wrap: anywhere; }
+.ext-card p { color: #343d56; }
+.card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.ext-badge { min-height: 28px; flex: none; display: inline-flex; align-items: center; border: 2px solid var(--ink); border-radius: 999px; padding: 4px 8px; background: var(--paper); font-size: 13px; font-weight: 700; line-height: 16px; }
+.ext-badge--blue { background: var(--blue); }
+.ext-badge--yellow { background: var(--yellow); }
+.ext-badge--mint { background: var(--mint); }
+.ext-badge--pink { background: var(--pink); }
+.ext-button { min-height: 46px; width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 2px solid var(--ink); border-radius: var(--radius-control); padding: 10px 14px; background: var(--ink); color: var(--paper); box-shadow: 2px 2px 0 var(--ink); font-size: 15px; line-height: 20px; font-weight: 700; cursor: pointer; }
+.ext-button--secondary { background: var(--pink); color: var(--ink); }
+.ext-button--ghost { background: var(--paper); color: var(--ink); }
+.ext-button--danger { background: var(--paper); color: var(--danger); }
+.ext-button:disabled { cursor: not-allowed; opacity: .5; box-shadow: none; }
+.ext-button:not(:disabled):active { transform: translate(2px, 2px); box-shadow: none; }
+.ext-field { display: grid; gap: 6px; font-size: 14px; font-weight: 700; }
+.ext-field input { min-height: 48px; width: 100%; border: 2px solid var(--ink); border-radius: var(--radius-control); padding: 10px 12px; background: var(--paper); color: var(--ink); font-size: 16px; }
+.ext-field input::placeholder { color: var(--muted); }
+.ext-notice { border: 2px solid var(--ink); border-radius: var(--radius-control); padding: 12px; background: var(--blue); font-size: 14px; }
+.ext-notice--warning { background: var(--yellow); }
+.ext-notice--success { background: var(--mint); }
+.ext-notice--danger { background: #f7c6cf; }
+.popup-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.command-summary { font-size: 14px; font-weight: 700; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .ext-button { transition: transform 140ms ease, box-shadow 140ms ease; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

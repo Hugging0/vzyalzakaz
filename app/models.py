@@ -67,6 +67,22 @@ class PaymentStatus(StrEnum):
     CANCELED = "canceled"
 
 
+class ApplicationCommandStatus(StrEnum):
+    QUEUED = "queued"
+    DELIVERED = "delivered"
+    OPENING_PAGE = "opening_page"
+    WAITING_FOR_AUTH = "waiting_for_auth"
+    PAGE_READY = "page_ready"
+    FORM_FOUND = "form_found"
+    FILLING = "filling"
+    PARTIALLY_FILLED = "partially_filled"
+    READY_FOR_REVIEW = "ready_for_review"
+    SUBMITTED = "submitted"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    EXPIRED = "expired"
+
+
 class Opportunity(Base):
     __tablename__ = "opportunities"
 
@@ -308,6 +324,117 @@ class WebSession(Base):
     )
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
+class ExtensionLinkTicket(Base):
+    __tablename__ = "extension_link_tickets"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("telegram_users.id", ondelete="CASCADE"), index=True
+    )
+    code_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
+class ExtensionInstallation(Base):
+    __tablename__ = "extension_installations"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("telegram_users.id", ondelete="CASCADE"), index=True
+    )
+    installation_id: Mapped[str] = mapped_column(String(64))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    browser: Mapped[str] = mapped_column(String(30), default="chromium")
+    version: Mapped[str] = mapped_column(String(30))
+    active_source_id: Mapped[str | None] = mapped_column(String(100))
+    marketplace_auth_state: Mapped[str | None] = mapped_column(String(30))
+    last_error_code: Mapped[str | None] = mapped_column(String(60))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "installation_id", name="uq_extension_user_installation"),
+    )
+
+
+class ApplicationCommand(Base):
+    __tablename__ = "application_commands"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("telegram_users.id", ondelete="CASCADE"), index=True
+    )
+    user_opportunity_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("user_opportunities.id", ondelete="CASCADE"), index=True
+    )
+    claimed_installation_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("extension_installations.id", ondelete="SET NULL"), index=True
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(100))
+    source_id: Mapped[str] = mapped_column(String(100), index=True)
+    job_url: Mapped[str] = mapped_column(Text)
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[ApplicationCommandStatus] = mapped_column(
+        Enum(
+            ApplicationCommandStatus,
+            native_enum=False,
+            values_callable=lambda enum: [item.value for item in enum],
+        ),
+        default=ApplicationCommandStatus.QUEUED,
+        index=True,
+    )
+    result: Mapped[dict] = mapped_column(JSON, default=dict)
+    error_code: Mapped[str | None] = mapped_column(String(60))
+    error_detail: Mapped[str | None] = mapped_column(String(255))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "idempotency_key", name="uq_application_command_idempotency"),
+        Index("ix_application_command_user_status", "user_id", "status", "created_at"),
+    )
+
+
+class ExtensionDiagnostic(Base):
+    __tablename__ = "extension_diagnostics"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("telegram_users.id", ondelete="CASCADE"), index=True
+    )
+    installation_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("extension_installations.id", ondelete="CASCADE"), index=True
+    )
+    command_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("application_commands.id", ondelete="CASCADE"), index=True
+    )
+    event: Mapped[str] = mapped_column(String(60), index=True)
+    level: Mapped[str] = mapped_column(String(20), default="info")
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
     )
 
 
