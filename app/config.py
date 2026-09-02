@@ -78,6 +78,7 @@ class SourceConfig(BaseModel):
     capabilities: list[
         Literal["collect", "quick_apply", "autofill", "requires_confirmation"]
     ] = Field(default_factory=lambda: ["collect", "requires_confirmation"])
+    content_policy: Literal["mixed", "demand_only"] = "mixed"
     poll_interval: int = 1800
     url: str | None = None
     channel: str | None = None
@@ -110,6 +111,12 @@ class AppSettings(BaseSettings):
     llm_model: str = "deepseek-chat"
     llm_base_url: str | None = None
     llm_timeout_seconds: int = 45
+    intent_classifier_enabled: bool = True
+    intent_classifier_model: str | None = None
+    intent_deterministic_demand_confidence: float = Field(default=0.86, ge=0.5, le=1)
+    intent_deterministic_reject_confidence: float = Field(default=0.82, ge=0.5, le=1)
+    intent_semantic_demand_confidence: float = Field(default=0.80, ge=0.5, le=1)
+    intent_semantic_reject_confidence: float = Field(default=0.72, ge=0.5, le=1)
 
     voice_transcription_enabled: bool = True
     voice_transcription_model: str = "base"

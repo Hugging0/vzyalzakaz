@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from app.config import AppSettings, PortfolioProject
 from app.models import CollectorRun, Opportunity, OpportunityStatus, TelegramUser, UserOpportunity
 from app.services.application_workflow import record_event, transition_application
+from app.services.content_classifier import DEMAND_CATEGORIES, is_demand_category
 from app.services.portfolio_documents import extract_document_text
 from app.services.recommendations import RecommendationService
 from app.services.voice import VoiceTranscriber
@@ -102,6 +103,8 @@ class TelegramBot:
 
     async def notify(self, opportunity: Opportunity) -> None:
         """Fan out one global opportunity into isolated per-user recommendations."""
+        if not is_demand_category(opportunity.content_category):
+            return
         async with self.session_factory() as session:
             users = (
                 await session.scalars(select(TelegramUser).where(TelegramUser.is_active.is_(True)))
@@ -523,6 +526,7 @@ class TelegramBot:
                     .where(
                         UserOpportunity.user_id == user.id,
                         UserOpportunity.status == OpportunityStatus.RECOMMENDED,
+                        Opportunity.content_category.in_(DEMAND_CATEGORIES),
                     )
                     .order_by(UserOpportunity.final_score.desc())
                     .limit(10)
@@ -554,6 +558,7 @@ class TelegramBot:
                     .where(
                         UserOpportunity.id == match_id,
                         TelegramUser.telegram_user_id == user.telegram_user_id,
+                        Opportunity.content_category.in_(DEMAND_CATEGORIES),
                     )
                 )
             ).one_or_none()

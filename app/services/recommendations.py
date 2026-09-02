@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import AppSettings, Candidate, CandidateProfile, PortfolioProject
 from app.models import Opportunity, OpportunityStatus, TelegramUser, UserOpportunity
 from app.schemas import RawOpportunity
+from app.services.content_classifier import DEMAND_CATEGORIES, is_demand_category
 from app.services.portfolio import select_portfolio
 from app.services.prefilter import evaluate
 from app.services.ranking import freshness_score
@@ -146,6 +147,8 @@ class RecommendationService:
         user: TelegramUser,
         opportunity: Opportunity,
     ) -> UserOpportunity | None:
+        if not is_demand_category(opportunity.content_category):
+            return None
         existing = await session.scalar(
             select(UserOpportunity).where(
                 UserOpportunity.user_id == user.id,
@@ -224,7 +227,10 @@ class RecommendationService:
         opportunities = (
             await session.scalars(
                 select(Opportunity)
-                .where(Opportunity.status != OpportunityStatus.FILTERED)
+                .where(
+                    Opportunity.status != OpportunityStatus.FILTERED,
+                    Opportunity.content_category.in_(DEMAND_CATEGORIES),
+                )
                 .order_by(Opportunity.published_at.desc().nullslast())
                 .limit(limit or self.settings.onboarding_backfill_limit)
             )

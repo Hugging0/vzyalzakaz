@@ -58,8 +58,8 @@ async def test_personal_matches_do_not_leak_between_users(settings, profile):
         source_type="telegram",
         external_id="multi-1",
         title="Python FastAPI automation project",
-        description="Remote freelance project: Python FastAPI Telegram bot API automation",
-        raw_text="Remote freelance project: Python FastAPI Telegram bot API automation",
+        description="Looking for a Python developer for a remote FastAPI automation project",
+        raw_text="Looking for a Python developer for a remote FastAPI automation project",
         published_at=datetime.now(UTC),
         remote=True,
     )

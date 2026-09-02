@@ -108,10 +108,8 @@ NEGATIVE_RULES = {
     "relocation": {"relocation required", "обязательная релокация", "переезд обязателен"},
     "unpaid": {"unpaid internship", "неоплачиваемая стажировка"},
     "commission": {"commission only", "только процент"},
-    "spam": {"guaranteed income", "гарантированный доход", "без вложений", "легкие деньги"},
     "gambling": {"casino", "gambling", "казино", "ставки на спорт"},
     "coursework": {"coursework", "homework", "курсовая", "дипломная работа", "домашнее задание"},
-    "candidate_profile": {"willing to relocate", "open to relocation"},
 }
 
 
@@ -155,10 +153,8 @@ def evaluate(raw: RawOpportunity, profile: CandidateProfile) -> PrefilterResult:
             "relocation",
             "unpaid",
             "commission",
-            "spam",
             "gambling",
             "coursework",
-            "candidate_profile",
         }
         for reason in negatives
     )

@@ -41,6 +41,7 @@ sources:
   # Public API / lightweight web adapters. Automated application is disabled.
   - name: hh_ru
     type: api
+    content_policy: demand_only
     language: ru
     priority: tier_a
     enabled: false
@@ -52,6 +53,7 @@ sources:
 
   - name: remotive
     type: api
+    content_policy: demand_only
     language: en
     priority: tier_a
     # Remotive currently returns HTTP 403 from the production VPS. Re-enable after access is restored.
@@ -64,6 +66,7 @@ sources:
 
   - name: remotive_design
     type: api
+    content_policy: demand_only
     language: en
     priority: tier_a
     enabled: false
@@ -75,6 +78,7 @@ sources:
 
   - name: remotive_marketing
     type: api
+    content_policy: demand_only
     language: en
     priority: tier_a
     enabled: false
@@ -86,6 +90,7 @@ sources:
 
   - name: remotive_writing
     type: api
+    content_policy: demand_only
     language: en
     priority: tier_b
     enabled: false
@@ -97,6 +102,7 @@ sources:
 
   - name: remoteok
     type: api
+    content_policy: demand_only
     language: en
     priority: tier_b
     enabled: true
@@ -107,6 +113,7 @@ sources:
 
   - name: arbeitnow
     type: api
+    content_policy: demand_only
     language: en
     priority: tier_b
     # Arbeitnow currently returns HTTP 403 from the production VPS. Re-enable after access is restored.
@@ -118,6 +125,7 @@ sources:
 
   - name: hackernews
     type: web
+    content_policy: demand_only
     language: en
     priority: tier_c
     enabled: true
@@ -129,6 +137,7 @@ sources:
 
   - name: weworkremotely
     type: rss
+    content_policy: demand_only
     language: en
     priority: tier_b
     enabled: true
@@ -139,6 +148,7 @@ sources:
 
   - name: weworkremotely_design
     type: rss
+    content_policy: demand_only
     language: en
     priority: tier_a
     enabled: true
@@ -149,6 +159,7 @@ sources:
 
   - name: weworkremotely_marketing
     type: rss
+    content_policy: demand_only
     language: en
     priority: tier_a
     enabled: true
@@ -159,6 +170,7 @@ sources:
 
   - name: jobicy_marketing
     type: api
+    content_policy: demand_only
     language: en
     priority: tier_a
     enabled: true
@@ -170,6 +182,7 @@ sources:
 
   - name: jobicy_design_multimedia
     type: api
+    content_policy: demand_only
     language: en
     priority: tier_a
     enabled: true
@@ -181,6 +194,7 @@ sources:
 
   - name: jobicy_copywriting
     type: api
+    content_policy: demand_only
     language: en
     priority: tier_b
     enabled: true
@@ -197,6 +211,7 @@ sources:
   # Verified public API / feed adapters
   - name: himalayas
     type: api
+    content_policy: demand_only
     language: en
     priority: tier_a
     enabled: true
@@ -209,6 +224,7 @@ sources:
   - name: freelancer_com
     display_name: Freelancer
     type: api
+    content_policy: demand_only
     language: multi
     priority: tier_a
     enabled: true
@@ -220,6 +236,7 @@ sources:
 
   - name: working_nomads
     type: api
+    content_policy: demand_only
     language: en
     priority: tier_a
     enabled: true
@@ -231,6 +248,7 @@ sources:
 
   - name: problogger_jobs
     type: web
+    content_policy: demand_only
     language: en
     priority: tier_a
     enabled: true
@@ -308,10 +326,10 @@ sources:
   # document is intentionally not duplicated: welcome_to_jungle already exists.
 
   # Verified RSS feeds reachable from the production VPS.
-  - {name: python_org_jobs, type: rss, language: en, priority: tier_a, enabled: true, collector: generic_rss, apply_mode: draft_only, poll_interval: 1800, url: "https://www.python.org/jobs/feed/rss/", options: {limit: 100, skills: [Python]}}
-  - {name: golangprojects, type: rss, language: en, priority: tier_a, enabled: true, collector: generic_rss, apply_mode: draft_only, poll_interval: 3600, url: "https://www.golangprojects.com/rss.xml", options: {limit: 100, skills: [Go, Golang]}}
-  - {name: work_with_indies, type: rss, language: en, priority: tier_a, enabled: true, collector: generic_rss, apply_mode: draft_only, poll_interval: 3600, url: "https://workwithindies.com/careers/rss.xml", options: {limit: 100, skills: [GameDev]}}
-  - {name: coroflot, type: rss, language: en, priority: tier_a, enabled: true, collector: generic_rss, apply_mode: draft_only, poll_interval: 21600, url: "http://feeds.feedburner.com/Coroflot/AllJobs", options: {limit: 100, skills: [Design]}}
+  - {name: python_org_jobs, type: rss, content_policy: demand_only, language: en, priority: tier_a, enabled: true, collector: generic_rss, apply_mode: draft_only, poll_interval: 1800, url: "https://www.python.org/jobs/feed/rss/", options: {limit: 100, skills: [Python]}}
+  - {name: golangprojects, type: rss, content_policy: demand_only, language: en, priority: tier_a, enabled: true, collector: generic_rss, apply_mode: draft_only, poll_interval: 3600, url: "https://www.golangprojects.com/rss.xml", options: {limit: 100, skills: [Go, Golang]}}
+  - {name: work_with_indies, type: rss, content_policy: demand_only, language: en, priority: tier_a, enabled: true, collector: generic_rss, apply_mode: draft_only, poll_interval: 3600, url: "https://workwithindies.com/careers/rss.xml", options: {limit: 100, skills: [GameDev]}}
+  - {name: coroflot, type: rss, content_policy: demand_only, language: en, priority: tier_a, enabled: true, collector: generic_rss, apply_mode: draft_only, poll_interval: 21600, url: "http://feeds.feedburner.com/Coroflot/AllJobs", options: {limit: 100, skills: [Design]}}
 
   # International freelance marketplaces and vetted talent networks.
   - {name: fiverr, type: web, language: multi, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 21600, url: "https://www.fiverr.com/"}

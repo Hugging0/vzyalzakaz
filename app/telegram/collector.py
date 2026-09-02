@@ -123,6 +123,8 @@ class TelegramCollector:
                 "message_id": message.id,
                 "links": URL_RE.findall(text),
                 "forwarded": bool(message.forward),
+                "source_content_policy": source.content_policy,
+                "source_language": source.language,
             },
         )
         async with self.session_factory() as session:

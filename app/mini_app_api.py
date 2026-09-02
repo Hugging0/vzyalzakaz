@@ -22,6 +22,7 @@ from app.models import (
     UserOpportunity,
 )
 from app.services.application_workflow import record_event, transition_application
+from app.services.content_classifier import DEMAND_CATEGORIES
 from app.services.payments import YooKassaService, payment_payload
 from app.services.web_sessions import (
     clear_session_cookie,
@@ -186,6 +187,7 @@ async def _owned_match(
             select(UserOpportunity, Opportunity)
             .join(Opportunity, Opportunity.id == UserOpportunity.opportunity_id)
             .where(UserOpportunity.id == match_id, UserOpportunity.user_id == user.id)
+            .where(Opportunity.content_category.in_(DEMAND_CATEGORIES))
         )
     ).one_or_none()
     if not row:
@@ -372,6 +374,7 @@ async def list_leads(
         .where(
             UserOpportunity.user_id == user.id,
             UserOpportunity.final_score >= minimum_score,
+            Opportunity.content_category.in_(DEMAND_CATEGORIES),
         )
     )
     if status is not None:

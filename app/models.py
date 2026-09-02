@@ -38,6 +38,28 @@ class OpportunityStatus(StrEnum):
     LOST = "lost"
 
 
+class ContentCategory(StrEnum):
+    PROJECT = "project"
+    JOB = "job"
+    GIG = "gig"
+    RESUME = "resume"
+    JOB_SEEKER = "job_seeker"
+    SERVICE_OFFER = "service_offer"
+    AGENCY_OFFER = "agency_offer"
+    SELF_PROMOTION = "self_promotion"
+    COURSE_OR_EDUCATION = "course_or_education"
+    ADVERTISEMENT = "advertisement"
+    COMMUNITY_POST = "community_post"
+    EVENT = "event"
+    SPAM_OR_SCAM = "spam_or_scam"
+    UNKNOWN = "unknown"
+
+
+class ClassificationMethod(StrEnum):
+    DETERMINISTIC = "deterministic"
+    SEMANTIC = "semantic"
+
+
 class PaymentStatus(StrEnum):
     PENDING = "pending"
     WAITING_FOR_CAPTURE = "waiting_for_capture"
@@ -76,6 +98,28 @@ class Opportunity(Base):
     normalized_hash: Mapped[str] = mapped_column(String(64), index=True)
     prefilter_score: Mapped[float | None] = mapped_column(Float)
     prefilter_reasons: Mapped[list] = mapped_column(JSON, default=list)
+    content_category: Mapped[ContentCategory] = mapped_column(
+        Enum(
+            ContentCategory,
+            native_enum=False,
+            values_callable=lambda enum: [item.value for item in enum],
+        ),
+        default=ContentCategory.UNKNOWN,
+        index=True,
+    )
+    classification_confidence: Mapped[float | None] = mapped_column(Float)
+    classification_method: Mapped[ClassificationMethod | None] = mapped_column(
+        Enum(
+            ClassificationMethod,
+            native_enum=False,
+            values_callable=lambda enum: [item.value for item in enum],
+        ),
+    )
+    classification_reasons: Mapped[list] = mapped_column(JSON, default=list)
+    classification_fallback_used: Mapped[bool] = mapped_column(Boolean, default=False)
+    classification_fallback_failed: Mapped[bool] = mapped_column(Boolean, default=False)
+    classification_latency_ms: Mapped[float | None] = mapped_column(Float)
+    classification_version: Mapped[str | None] = mapped_column(String(30))
     fit_score: Mapped[float | None] = mapped_column(Float)
     money_score: Mapped[float | None] = mapped_column(Float)
     win_score: Mapped[float | None] = mapped_column(Float)
@@ -135,6 +179,10 @@ class CollectorRun(Base):
     fetched: Mapped[int] = mapped_column(Integer, default=0)
     created: Mapped[int] = mapped_column(Integer, default=0)
     merged: Mapped[int] = mapped_column(Integer, default=0)
+    classification_counts: Mapped[dict] = mapped_column(JSON, default=dict)
+    semantic_fallback_count: Mapped[int] = mapped_column(Integer, default=0)
+    semantic_fallback_failures: Mapped[int] = mapped_column(Integer, default=0)
+    classification_latency_ms: Mapped[float] = mapped_column(Float, default=0)
     error: Mapped[str | None] = mapped_column(Text)
 
 

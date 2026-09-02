@@ -55,7 +55,7 @@ def test_farsi_project_passes(profile):
     assert evaluate(raw, profile).passed
 
 
-def test_candidate_resume_is_rejected(profile):
+def test_prefilter_only_answers_profile_relevance(profile):
     raw = RawOpportunity(
         source="hackernews",
         source_type="web",
@@ -66,8 +66,8 @@ def test_candidate_resume_is_rejected(profile):
 
     result = evaluate(raw, profile)
 
-    assert not result.passed
-    assert "candidate_profile" in result.negative_matches
+    assert result.passed
+    assert "candidate_profile" not in result.negative_matches
 
 
 def test_hybrid_role_is_rejected_for_remote_profile(profile):

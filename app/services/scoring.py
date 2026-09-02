@@ -5,10 +5,9 @@ import logging
 import re
 from typing import Any
 
-import httpx
-
 from app.config import AppSettings, CandidateProfile, PortfolioProject
 from app.schemas import LLMAnalysis, ProfileIntake, RawOpportunity
+from app.services.llm_client import ChatCompletionClient
 from app.services.normalizer import normalize_text
 
 logger = logging.getLogger(__name__)
@@ -18,9 +17,10 @@ class OpportunityAnalyzer:
     def __init__(self, settings: AppSettings, profile: CandidateProfile):
         self.settings = settings
         self.profile = profile
+        self.llm = ChatCompletionClient(settings)
 
     async def analyze(self, raw: RawOpportunity, portfolio: PortfolioProject | None) -> LLMAnalysis:
-        if self.settings.llm_provider == "disabled" or not self.settings.llm_api_key:
+        if not self.llm.available:
             return self._deterministic_analysis(raw, portfolio)
         try:
             result = await self._call_llm(self._analysis_prompt(raw, portfolio))
@@ -34,7 +34,7 @@ class OpportunityAnalyzer:
     async def generate_proposal(
         self, raw: RawOpportunity, analysis: dict[str, Any], portfolio: PortfolioProject | None
     ) -> str:
-        if self.settings.llm_provider == "disabled" or not self.settings.llm_api_key:
+        if not self.llm.available:
             return self._deterministic_proposal(raw, analysis, portfolio)
         prompt = self._proposal_prompt(raw, analysis, portfolio)
         try:
@@ -67,41 +67,11 @@ Text:
             return _deterministic_profile_intake(text)
 
     async def _call_llm(self, prompt: str, json_mode: bool = True) -> dict | str:
-        base_url = (
-            self.settings.llm_base_url
-            or {
-                "deepseek": "https://api.deepseek.com",
-                "openrouter": "https://openrouter.ai/api/v1",
-            }[self.settings.llm_provider]
+        return await self.llm.complete(
+            prompt,
+            system="You are a precise job opportunity analyst. Never invent facts.",
+            json_mode=json_mode,
         )
-        payload: dict[str, Any] = {
-            "model": self.settings.llm_model,
-            "temperature": 0.1,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "You are a precise job opportunity analyst. Never invent facts.",
-                },
-                {"role": "user", "content": prompt},
-            ],
-        }
-        if json_mode:
-            payload["response_format"] = {"type": "json_object"}
-        headers = {"Authorization": f"Bearer {self.settings.llm_api_key}"}
-        if self.settings.llm_provider == "openrouter":
-            headers.update(
-                {"HTTP-Referer": "https://localhost/jobhunter", "X-Title": "Personal AI JobHunter"}
-            )
-        async with httpx.AsyncClient(timeout=self.settings.llm_timeout_seconds) as client:
-            response = await client.post(
-                f"{base_url.rstrip('/')}/chat/completions", json=payload, headers=headers
-            )
-            response.raise_for_status()
-        content = response.json()["choices"][0]["message"]["content"]
-        if not json_mode:
-            return content
-        content = re.sub(r"^```(?:json)?|```$", "", content.strip(), flags=re.MULTILINE).strip()
-        return json.loads(content)
 
     def _analysis_prompt(self, raw: RawOpportunity, portfolio: PortfolioProject | None) -> str:
         profile = self.profile
@@ -138,7 +108,7 @@ Candidate: {self.profile.candidate.name}
 About: {self.profile.candidate.about}
 Skills: {", ".join(self.profile.candidate.skills)}
 Relevant portfolio: {portfolio.model_dump_json() if portfolio else "none"}
-Analysis: {json.dumps(analysis, ensure_ascii=False)}
+        Analysis: {json.dumps(analysis, ensure_ascii=False)}
 Opportunity: {raw.title}\n{(raw.raw_text or raw.description)[:10000]}
 
 Return only the proposal text.
