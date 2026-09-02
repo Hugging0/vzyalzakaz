@@ -53,8 +53,8 @@ async def test_bot_registers_and_updates_users_independently(settings, profile):
         ],
         [
             {
-                "text": "Заполнить форму",
-                "web_app": {"url": "https://example.com/app"},
+                "text": "Заполнить в кабинете",
+                "web_app": {"url": "https://example.com/app/profile"},
                 "style": "primary",
             }
         ],

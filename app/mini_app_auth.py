@@ -8,7 +8,7 @@ import json
 from datetime import UTC, datetime
 from urllib.parse import parse_qsl
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import AppSettings, get_settings
 from app.database import get_session
 from app.models import TelegramUser
+from app.services.web_sessions import user_from_web_session
 
 security = HTTPBearer(auto_error=False)
 
@@ -81,14 +82,21 @@ def _decode_session_token(token: str, settings: AppSettings) -> int:
 
 
 async def current_mini_app_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
     session: AsyncSession = Depends(get_session),
     settings: AppSettings = Depends(get_settings),
 ) -> TelegramUser:
-    if not credentials or credentials.scheme.lower() != "bearer":
-        raise HTTPException(401, "Mini App session is required")
-    telegram_user_id = _decode_session_token(credentials.credentials, settings)
-    user = await session.scalar(select(TelegramUser).where(TelegramUser.telegram_user_id == telegram_user_id))
+    user = None
+    if credentials and credentials.scheme.lower() == "bearer":
+        telegram_user_id = _decode_session_token(credentials.credentials, settings)
+        user = await session.scalar(
+            select(TelegramUser).where(TelegramUser.telegram_user_id == telegram_user_id)
+        )
+    else:
+        cookie = request.cookies.get(settings.web_session_cookie_name)
+        if cookie:
+            user = await user_from_web_session(session, cookie)
     if not user:
-        raise HTTPException(401, "Open the bot and run /start before opening the Mini App")
+        raise HTTPException(401, "Войдите через Telegram, чтобы открыть кабинет")
     return user

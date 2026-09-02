@@ -4,35 +4,37 @@ Self-hosted агент, который собирает вакансии и пр
 оценивает FIT / MONEY / WIN, присылает лучшие варианты в Telegram и готовит
 персональный отклик только после ручного подтверждения.
 
-Сервис поддерживает несколько пользователей. Telegram-бот отвечает за срочные
-уведомления и быстрые действия, а Telegram Mini App — за ленту, черновики,
-портфолио, профиль и воронку. Каждый пользователь получает изолированные данные.
+Сервис поддерживает несколько пользователей. Responsive Web/PWA — основной кабинет,
+Telegram-бот отвечает за срочные уведомления, быстрые действия и deep links.
+Каждый пользователь получает изолированные данные.
 
 ## Что уже входит в V1
 
-- Telethon/MTProto: realtime-сообщения, изменения и первоначальный backfill из 27 каналов;
-- шесть публичных web/API/RSS-адаптеров: HH.ru, Remotive, Remote OK, Arbeitnow,
-  Hacker News, We Work Remotely и Jobicy;
+- Telethon/MTProto: realtime-сообщения, изменения и первоначальный backfill из 33 каналов;
+- 16 включённых web/API/RSS-источников; всего в реестре 186 источников с явным
+  статусом и режимом подключения;
 - PostgreSQL + SQLAlchemy 2 + Alembic;
 - exact- и content-дедупликация с сохранением всех источников репоста;
 - быстрый rule-based prefilter на русском, английском и фарси;
 - structured LLM-анализ через DeepSeek или OpenRouter с безопасным локальным fallback;
 - FIT / MONEY / WIN / freshness и настраиваемый итоговый рейтинг;
-- Telegram-карточки, APPROVE, SKIP с причиной, DETAILS, OPEN и `/digest`;
+- Telegram-карточки с цветными inline-кнопками, быстрым черновиком, отказом и deep links;
 - подбор portfolio-case и генерация персонального proposal;
 - отдельные данные и статусы для каждого Telegram user id;
 - регистрация open/invite/closed, лимит пользователей и pause/resume;
-- Telegram Mini App на Next.js: onboarding, лента, карточка лида, редактор
-  черновика, воронка, статистика, профиль и portfolio;
-- серверная проверка подписи Telegram `initData` и подписанная app-сессия;
-- Nginx reverse proxy: единый адрес для Mini App и API;
+- responsive Web/PWA на Next.js: Today, заказы, отклики, портфолио, площадки,
+  статистика, профиль и настройки агента;
+- собственная HttpOnly web session; Telegram `initData` и одноразовая ссылка из бота
+  используются как безопасные способы bootstrap-входа;
+- manifest, installable standalone shell и ограниченный offline fallback без кэша API;
+- Nginx reverse proxy: единый адрес для Web/PWA и API;
 - тестовый checkout ЮKassa с idempotency, webhook-проверкой и ручным refresh статуса;
 - `APPROVE` создаёт черновик и открывает контакт — отправка остаётся ручной;
 - аналитика через `/stats` в боте и `GET /api/analytics`;
 - Docker Compose и тесты.
 
-Семантические embeddings, UI-панель, billing и массовые интеграции
-намеренно оставлены для Phase 2.
+Browser extension для assisted-откликов и массовые API-интеграции оставлены для
+следующего этапа. Backend и экран площадок уже используют capability contract.
 
 ## Быстрый запуск
 
@@ -72,17 +74,19 @@ curl http://localhost:8010/api/health
 
 Swagger (локально): [http://localhost:8010/docs](http://localhost:8010/docs).
 
-## Telegram Mini App
+## Web/PWA и вход
 
-После запуска веб-кабинет доступен по `http://localhost:${HTTP_PORT}/app` для
-локальной проверки. В production он открывается только с валидным Telegram
-`initData`: бот token никогда не передаётся браузеру.
+После запуска кабинет доступен по `http://localhost:${HTTP_PORT}/app`. Корневой
+маршрут ведёт на `/app/today`; каждый заказ и отклик имеет собственный URL.
 
-Telegram требует HTTPS URL для кнопки Mini App. Пока домена нет, сервис можно
-развернуть и проверить по IP через HTTP, но привязывать этот IP как Mini App в
-BotFather не нужно. После покупки домена укажите `MINI_APP_URL=https://.../app`,
-выпустите TLS-сертификат и перезапустите сервис — бот создаст кнопку `/app` и
-menu button автоматически.
+В обычном браузере `/login` открывает Telegram-бота. Бот присылает одноразовую
+ссылку, после обмена которой браузер получает HttpOnly cookie. В Telegram webview
+сохраняется bootstrap через проверенный `initData`, после чего также создаётся
+обычная web session. Интерфейс не зависит от наличия Telegram WebApp runtime.
+
+Telegram требует HTTPS URL для `web_app`-кнопок. После настройки домена укажите
+`PUBLIC_BASE_URL=https://...` и `MINI_APP_URL=https://.../app`, выпустите TLS и
+перезапустите сервис. Menu button и уведомления будут вести сразу в нужные PWA routes.
 
 `ALLOW_DEV_AUTH=true` разрешает browser-preview с тестовым пользователем. Это
 исключительно локальная настройка; на VPS её нужно оставить `false`.
@@ -116,7 +120,7 @@ TELEGRAM_PROXY_PASSWORD=
 ```
 
 Прокси без логина допустим только при firewall/IP allowlist для production VPS.
-Bot API, Mini App, база и LLM через этот прокси не маршрутизируются. Не используйте
+Bot API, Web/PWA, база и LLM через этот прокси не маршрутизируются. Не используйте
 бесплатные публичные прокси и Telegram test DC: тестовая среда не содержит production-каналы.
 
 5. Запустите одноразовую команду авторизации из раздела выше. Если включена 2FA,
@@ -188,7 +192,7 @@ motion, CG и широкий фриланс. Перед включением MTP
 
 ## Тестовая оплата ЮKassa
 
-Checkout запускается в разделе «Профиль» Mini App. Все запросы идут только с
+Checkout запускается в разделе «Профиль» Web/PWA. Все запросы идут только с
 backend: frontend получает исключительно URL подтверждения. Для локального теста
 заполните `.env`:
 
@@ -199,7 +203,7 @@ YOOKASSA_SECRET_KEY=...
 BILLING_PRO_MONTHLY_PRICE_RUB=990.00
 ```
 
-После возврата из ЮKassa Mini App запрашивает статус повторно. Webhook
+После возврата из ЮKassa Web/PWA запрашивает статус повторно. Webhook
 `POST /api/webhooks/yookassa` дополнительно сверяет платёж через API ЮKassa,
 а не доверяет входящему JSON. Для production достаточно подставить production
 credentials, production HTTPS `PUBLIC_BASE_URL`, назначить webhook в кабинете
@@ -207,7 +211,8 @@ credentials, production HTTPS `PUBLIC_BASE_URL`, назначить webhook в �
 
 ## Настройка пользователей через Telegram
 
-После `/start` основной сценарий — кнопка `/app`. В боте остаются быстрые команды:
+После `/start` основной сценарий — кнопки и обычный рассказ о себе. Команды не
+являются основным UI; для совместимости остаются:
 
 ```text
 /app
@@ -245,7 +250,7 @@ HH.ru adapter включён в код, но в стартовом конфиг�
 - Общий MTProto account используется только для чтения каналов. Он никогда не
   отправляет сообщения от имени пользователей сервиса.
 
-## API
+## Web/PWA API
 
 Основные маршруты:
 
@@ -256,9 +261,19 @@ HH.ru adapter включён в код, но в стартовом конфиг�
 - `GET /api/analytics`;
 - `POST /api/collect/{source_name}` — ручной запуск web collector.
 
-Внешний Nginx проксирует `/api/mini-app/*` и `/api/app/*` вместе с Mini App.
-Эти маршруты требуют app-сессию, которая выдаётся только после server-side
-проверки Telegram `initData`. Legacy API привязан только к `127.0.0.1`.
+Маршруты кабинета:
+
+- `POST /api/web/auth/bootstrap|exchange|logout` — web session;
+- `GET|PATCH /api/app/me` — профиль и настройки;
+- `GET /api/app/leads` и `GET /api/app/leads/{id}` — список и detail;
+- `POST|PATCH /api/app/leads/{id}/proposal` — общий backend-процесс отклика;
+- `PATCH /api/app/leads/{id}/status` и `GET .../events` — воронка и история;
+- `GET /api/app/sources` — connection status и capabilities;
+- `/api/app/portfolio`, `/api/app/analytics`, `/api/app/billing`.
+
+Внешний Nginx проксирует `/api/mini-app/*`, `/api/web/*` и `/api/app/*` вместе с PWA.
+Защищённые маршруты принимают HttpOnly web session или короткую legacy-сессию во
+время bootstrap. Legacy API привязан только к `127.0.0.1`.
 
 ## Подготовка к VPS
 
@@ -271,7 +286,7 @@ HH.ru adapter включён в код, но в стартовом конфиг�
 7. Не публикуйте `JOBHUNTER_PORT`; наружу нужен только `HTTP_PORT` (80/443 через Nginx).
 8. До подключения домена оставьте `MINI_APP_URL` пустым и `ALLOW_DEV_AUTH=false`.
 9. После покупки домена направьте A-запись на VPS, выпустите TLS-сертификат,
-   задайте HTTPS `MINI_APP_URL` и только затем подключите Mini App в BotFather.
+   задайте HTTPS `PUBLIC_BASE_URL` и `MINI_APP_URL`, затем обновите menu button в BotFather.
 
 При последующем горизонтальном масштабировании bot polling и collectors нужно
 вынести в отдельный worker с distributed lock. Текущая конфигурация рассчитана

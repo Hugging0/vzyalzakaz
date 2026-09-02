@@ -2,7 +2,7 @@
 
 ## Repository setup
 
-The project uses one private GitHub repository with `main` as the stable branch and `origin` as the remote name. Create the GitHub repository empty: do not initialize it with a README, `.gitignore`, or license because the local repository already has history.
+The project uses the GitHub repository `Hugging0/vzyalzakaz` with `main` as the stable branch and `origin` as the remote name. Its current visibility is public, so secrets and personal data must never appear in commits. The local repository already owns the history.
 
 Authentication must use GitHub CLI browser login or a dedicated SSH key. Do not put a GitHub token in `.env`, a shell command, project files, or chat history.
 

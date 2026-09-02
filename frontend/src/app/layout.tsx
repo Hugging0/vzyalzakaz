@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Golos_Text, Unbounded } from "next/font/google";
-import Script from "next/script";
 
+import { AppProviders } from "@/components/providers/AppProviders";
+import { PwaRegistration } from "@/components/pwa/PwaRegistration";
 import "./globals.css";
 
 const golos = Golos_Text({
@@ -18,16 +19,29 @@ const unbounded = Unbounded({
 });
 
 export const metadata: Metadata = {
-  title: "Взял заказ",
+  applicationName: "ВзялЗаказ",
+  title: { default: "ВзялЗаказ", template: "%s | ВзялЗаказ" },
   description: "Подходящие проекты без лишнего шума",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "ВзялЗаказ" },
+  icons: { icon: "/icon.svg", apple: "/icon-192.png" },
+};
+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover" as const,
+  themeColor: "#F6F3EC",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ru" suppressHydrationWarning>
       <body className={`${golos.className} ${unbounded.variable}`}>
-        <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
-        {children}
+        <AppProviders>
+          <PwaRegistration />
+          {children}
+        </AppProviders>
       </body>
     </html>
   );

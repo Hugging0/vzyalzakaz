@@ -280,7 +280,24 @@ def personalized_match_score(
 
 
 def source_matches_specialties(user: TelegramUser, opportunity: Opportunity) -> bool:
-    specialties = set((user.profile or {}).get("ui", {}).get("specialties", []))
+    ui = (user.profile or {}).get("ui", {})
+    preferred_sources = set(ui.get("preferred_sources", []))
+    if preferred_sources and opportunity.source not in preferred_sources:
+        return False
+    excluded_keywords = {
+        value.casefold().strip() for value in ui.get("excluded_keywords", []) if value.strip()
+    }
+    searchable = f"{opportunity.title} {opportunity.description}".casefold()
+    if any(keyword in searchable for keyword in excluded_keywords):
+        return False
+    project_types = {
+        value.casefold().strip() for value in ui.get("project_types", []) if value.strip()
+    }
+    employment_type = (opportunity.employment_type or "").casefold()
+    if project_types and employment_type:
+        if not any(value in employment_type or employment_type in value for value in project_types):
+            return False
+    specialties = set(ui.get("specialties", []))
     if not specialties:
         profile = CandidateProfile.model_validate(user.profile)
         skills = " ".join(profile.candidate.skills).casefold()

@@ -1,3 +1,5 @@
+"use client";
+
 import { AudioLines, FileText, MessageSquareText } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -6,6 +8,7 @@ import { AppButton } from "@/components/ui/AppButton";
 import { AppCard } from "@/components/ui/AppCard";
 import { AppField } from "@/components/ui/AppField";
 import { AppNotice } from "@/components/ui/AppNotice";
+import { AppPageHeader } from "@/components/ui/AppPageHeader";
 import { miniAppApi } from "@/lib/api/client";
 import { telegramBridge } from "@/lib/telegram/telegram-webapp";
 
@@ -22,9 +25,7 @@ export function OnboardingView() {
   });
 
   return <>
-    <header className="app-header onboarding-header">
-      <div><h1>Расскажите, какую работу ищете</h1><p>Одного сообщения достаточно, чтобы запустить подбор.</p></div>
-    </header>
+    <AppPageHeader title="Расскажите, какую работу ищете" description="Одного сообщения достаточно, чтобы запустить подбор." />
     <div className="onboarding-layout">
       <AppCard tone="pink" className="onboarding-intro">
         <MessageSquareText size={24} aria-hidden="true" />
@@ -35,11 +36,11 @@ export function OnboardingView() {
         <AppField label="О себе и желаемых проектах" htmlFor="onboarding-about" hint="Например: проектирую интерфейсы в Figma, люблю сложные кабинеты и дизайн-системы. Ищу проекты от 50 000 ₽.">
           <textarea id="onboarding-about" className="app-textarea onboarding-textarea" value={about} onChange={(event) => setAbout(event.target.value)} placeholder="Расскажите о своём опыте и задачах…" autoFocus />
         </AppField>
-        <AppField label="Минимальный бюджет, ₽ — необязательно" htmlFor="onboarding-budget">
+        <AppField label="Минимальный бюджет, ₽ (необязательно)" htmlFor="onboarding-budget">
           <input id="onboarding-budget" className="app-input" type="number" inputMode="numeric" min="0" value={budget} onChange={(event) => setBudget(event.target.value)} placeholder="Например, 30 000" />
         </AppField>
         {save.isError && <AppNotice tone="danger">Не удалось сохранить профиль. Проверьте соединение и попробуйте ещё раз.</AppNotice>}
-        <AppButton disabled={about.trim().length < 20 || save.isPending} onClick={() => save.mutate()}>{save.isPending ? "Собираем профиль…" : "Создать профиль"}</AppButton>
+        <AppButton disabled={about.trim().length < 20 || save.isPending} onClick={() => save.mutate()}>{save.isPending ? "Собираем профиль" : "Создать профиль"}</AppButton>
       </AppCard>
       <AppCard tone="blue" className="onboarding-alternative">
         <div><AudioLines size={22} aria-hidden="true" /><strong>Удобнее голосом?</strong></div>

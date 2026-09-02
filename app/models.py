@@ -213,6 +213,56 @@ class UserOpportunity(Base):
     )
 
 
+class ApplicationEvent(Base):
+    __tablename__ = "application_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_opportunity_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("user_opportunities.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("telegram_users.id", ondelete="CASCADE"), index=True
+    )
+    event: Mapped[str] = mapped_column(String(50), index=True)
+    detail: Mapped[str | None] = mapped_column(String(255))
+    actor: Mapped[str] = mapped_column(String(30), default="web")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
+    )
+
+
+class WebLoginTicket(Base):
+    __tablename__ = "web_login_tickets"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("telegram_users.id", ondelete="CASCADE"), index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
+class WebSession(Base):
+    __tablename__ = "web_sessions"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("telegram_users.id", ondelete="CASCADE"), index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
 class Payment(Base):
     __tablename__ = "payments"
 

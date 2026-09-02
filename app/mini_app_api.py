@@ -4,7 +4,7 @@ import re
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from pydantic import AliasChoices, BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,11 +12,32 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import AppSettings, CandidateProfile, PortfolioProject
 from app.database import get_session
 from app.mini_app_auth import create_session_token, current_mini_app_user, validate_init_data
-from app.models import Opportunity, OpportunityStatus, Payment, TelegramUser, UserOpportunity
+from app.models import (
+    ApplicationEvent,
+    CollectorRun,
+    Opportunity,
+    OpportunityStatus,
+    Payment,
+    TelegramUser,
+    UserOpportunity,
+)
+from app.services.application_workflow import record_event, transition_application
 from app.services.payments import YooKassaService, payment_payload
+from app.services.web_sessions import (
+    clear_session_cookie,
+    create_web_session,
+    exchange_login_ticket,
+    revoke_web_session,
+    set_session_cookie,
+)
 
 router = APIRouter(prefix="/api")
 CurrentUser = Annotated[TelegramUser, Depends(current_mini_app_user)]
+DEFAULT_NOTIFICATIONS = {
+    "strongMatches": True,
+    "replies": True,
+    "connectionIssues": True,
+}
 
 
 class TelegramAuthRequest(BaseModel):
@@ -26,7 +47,7 @@ class TelegramAuthRequest(BaseModel):
 class ProfileUpdate(BaseModel):
     skills: list[str] | None = Field(default=None, max_length=100)
     languages: list[str] | None = Field(default=None, max_length=10)
-    about: str | None = Field(default=None, max_length=2_000)
+    about: str | None = Field(default=None, max_length=6_000)
     minimum_budget: int | None = Field(
         default=None, validation_alias=AliasChoices("minimum_budget", "minimumBudget"), ge=0, le=100_000_000
     )
@@ -44,6 +65,22 @@ class ProfileUpdate(BaseModel):
     onboarding_completed: bool | None = Field(
         default=None, validation_alias=AliasChoices("onboarding_completed", "onboardingCompleted")
     )
+    excluded_keywords: list[str] | None = Field(
+        default=None,
+        validation_alias=AliasChoices("excluded_keywords", "excludedKeywords"),
+        max_length=50,
+    )
+    preferred_sources: list[str] | None = Field(
+        default=None,
+        validation_alias=AliasChoices("preferred_sources", "preferredSources"),
+        max_length=100,
+    )
+    automation_level: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("automation_level", "automationLevel"),
+        pattern="^(manual|drafts)$",
+    )
+    notifications: dict[str, bool] | None = None
 
 
 class OnboardingCreate(BaseModel):
@@ -71,6 +108,22 @@ class PortfolioCreate(BaseModel):
     url: str | None = Field(default=None, max_length=2_000)
 
 
+class PortfolioUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, min_length=1, max_length=1_500)
+    skills: list[str] | None = Field(default=None, max_length=50)
+    url: str | None = Field(default=None, max_length=2_000)
+
+
+class WebTicketExchange(BaseModel):
+    ticket: str = Field(min_length=24, max_length=255)
+
+
+class LeadStatusUpdate(BaseModel):
+    status: OpportunityStatus
+    detail: str | None = Field(default=None, max_length=255)
+
+
 class YooKassaWebhook(BaseModel):
     event: str
     object: dict
@@ -90,6 +143,10 @@ def _profile_payload(user: TelegramUser) -> dict:
         "matchThreshold": profile.ranking.realtime_threshold,
         "specialties": ui.get("specialties", []),
         "projectTypes": ui.get("project_types", []),
+        "excludedKeywords": ui.get("excluded_keywords", []),
+        "preferredSources": ui.get("preferred_sources", []),
+        "automationLevel": ui.get("automation_level", "drafts"),
+        "notifications": {**DEFAULT_NOTIFICATIONS, **ui.get("notifications", {})},
         "onboardingCompleted": bool(ui.get("onboarding_completed", bool(profile.candidate.skills))),
     }
 
@@ -115,6 +172,9 @@ def _lead_payload(match: UserOpportunity, opportunity: Opportunity) -> dict:
         "proposal": match.proposal,
         "status": match.status.value,
         "published_at": opportunity.published_at.isoformat() if opportunity.published_at else None,
+        "created_at": match.created_at.isoformat(),
+        "contacted_at": match.contacted_at.isoformat() if match.contacted_at else None,
+        "apply_mode": opportunity.apply_mode,
     }
 
 
@@ -168,6 +228,44 @@ async def mini_app_dev_auth(request: Request) -> dict:
     return {"token": create_session_token(user.telegram_user_id, settings)}
 
 
+@router.post("/web/auth/bootstrap")
+async def bootstrap_web_session(
+    response: Response,
+    request: Request,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    settings: AppSettings = request.app.state.runtime.settings
+    token = await create_web_session(session, user, settings)
+    set_session_cookie(response, token, settings)
+    return {"authenticated": True}
+
+
+@router.post("/web/auth/exchange")
+async def exchange_web_ticket(
+    payload: WebTicketExchange,
+    response: Response,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    settings: AppSettings = request.app.state.runtime.settings
+    user, token = await exchange_login_ticket(session, payload.ticket, settings)
+    set_session_cookie(response, token, settings)
+    return {"authenticated": True, "firstName": user.first_name}
+
+
+@router.post("/web/auth/logout")
+async def logout_web_session(
+    response: Response,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    settings: AppSettings = request.app.state.runtime.settings
+    await revoke_web_session(session, request.cookies.get(settings.web_session_cookie_name))
+    clear_session_cookie(response, settings)
+    return {"authenticated": False}
+
+
 @router.get("/app/me")
 async def read_profile(user: CurrentUser) -> dict:
     return _profile_payload(user)
@@ -200,11 +298,37 @@ async def update_profile(
         ui["specialties"] = _clean_values(payload.specialties, 20)
     if payload.project_types is not None:
         ui["project_types"] = _clean_values(payload.project_types, 20)
+    if payload.excluded_keywords is not None:
+        ui["excluded_keywords"] = _clean_values(payload.excluded_keywords, 50)
+    if payload.preferred_sources is not None:
+        ui["preferred_sources"] = _clean_values(payload.preferred_sources, 100)
+    if payload.automation_level is not None:
+        ui["automation_level"] = payload.automation_level
+    if payload.notifications is not None:
+        notifications = {**DEFAULT_NOTIFICATIONS, **ui.get("notifications", {})}
+        notifications.update(
+            {
+                key: bool(value)
+                for key, value in payload.notifications.items()
+                if key in DEFAULT_NOTIFICATIONS
+            }
+        )
+        ui["notifications"] = notifications
     if payload.onboarding_completed is not None:
         ui["onboarding_completed"] = payload.onboarding_completed
     raw_profile["ui"] = ui
     db_user.profile = raw_profile
-    ranking_fields = {"skills", "languages", "about", "minimum_budget", "hourly_rate"}
+    ranking_fields = {
+        "skills",
+        "languages",
+        "about",
+        "minimum_budget",
+        "hourly_rate",
+        "specialties",
+        "project_types",
+        "excluded_keywords",
+        "preferred_sources",
+    }
     should_rescore = bool(payload.model_fields_set & ranking_fields)
     if should_rescore:
         await request.app.state.runtime.recommendations.reset_recommendations(session, db_user)
@@ -236,25 +360,85 @@ async def complete_onboarding(
 async def list_leads(
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
+    status: OpportunityStatus | None = None,
+    minimum_score: float = Query(default=0, ge=0, le=100),
+    source: str | None = Query(default=None, max_length=100),
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
 ) -> list[dict]:
+    query = (
+        select(UserOpportunity, Opportunity)
+        .join(Opportunity, Opportunity.id == UserOpportunity.opportunity_id)
+        .where(
+            UserOpportunity.user_id == user.id,
+            UserOpportunity.final_score >= minimum_score,
+        )
+    )
+    if status is not None:
+        query = query.where(UserOpportunity.status == status)
+    if source:
+        query = query.where(Opportunity.source == source)
     rows = (
         await session.execute(
-            select(UserOpportunity, Opportunity)
-            .join(Opportunity, Opportunity.id == UserOpportunity.opportunity_id)
-            .where(UserOpportunity.user_id == user.id)
-            .order_by(UserOpportunity.final_score.desc(), Opportunity.published_at.desc().nullslast())
-            .limit(100)
+            query.order_by(
+                UserOpportunity.final_score.desc(),
+                Opportunity.published_at.desc().nullslast(),
+            )
+            .offset(offset)
+            .limit(limit)
         )
     ).all()
     return [_lead_payload(match, opportunity) for match, opportunity in rows]
 
 
+@router.get("/app/leads/{match_id}")
+async def read_lead(
+    match_id: int,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    match, opportunity = await _owned_match(session, user, match_id)
+    return _lead_payload(match, opportunity)
+
+
+@router.get("/app/leads/{match_id}/events")
+async def list_lead_events(
+    match_id: int,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> list[dict]:
+    match, _ = await _owned_match(session, user, match_id)
+    events = (
+        await session.scalars(
+            select(ApplicationEvent)
+            .where(
+                ApplicationEvent.user_opportunity_id == match.id,
+                ApplicationEvent.user_id == user.id,
+            )
+            .order_by(ApplicationEvent.created_at.asc())
+        )
+    ).all()
+    return [
+        {
+            "id": event.id,
+            "event": event.event,
+            "detail": event.detail,
+            "actor": event.actor,
+            "createdAt": event.created_at.isoformat(),
+        }
+        for event in events
+    ]
+
+
 @router.post("/app/leads/{match_id}/skip")
 async def skip_lead(match_id: int, user: CurrentUser, session: AsyncSession = Depends(get_session)) -> dict:
     match, _ = await _owned_match(session, user, match_id)
-    if match.status not in {OpportunityStatus.CONTACTED, OpportunityStatus.WON, OpportunityStatus.LOST}:
-        match.status = OpportunityStatus.SKIPPED
-        await session.commit()
+    await transition_application(
+        session,
+        match,
+        OpportunityStatus.SKIPPED,
+        actor="web",
+    )
     return {"status": match.status.value}
 
 
@@ -268,6 +452,8 @@ async def prepare_proposal(
     proposal = await request.app.state.runtime.recommendations.generate_proposal(
         session, user, match, opportunity
     )
+    await record_event(session, match, "proposal_ready", actor="web")
+    await session.commit()
     return {"proposal": proposal}
 
 
@@ -279,8 +465,17 @@ async def update_proposal(
     if match.status in {OpportunityStatus.CONTACTED, OpportunityStatus.WON, OpportunityStatus.LOST}:
         raise HTTPException(409, "Proposal can no longer be changed for this lead")
     match.proposal = payload.proposal.strip()
-    match.status = OpportunityStatus.APPROVED
-    await session.commit()
+    if match.status == OpportunityStatus.RECOMMENDED:
+        await transition_application(
+            session,
+            match,
+            OpportunityStatus.APPROVED,
+            actor="web",
+            detail="Текст отклика сохранён",
+        )
+    else:
+        await record_event(session, match, "proposal_updated", actor="web")
+        await session.commit()
     return {"proposal": match.proposal}
 
 
@@ -289,13 +484,30 @@ async def mark_contacted(
     match_id: int, user: CurrentUser, session: AsyncSession = Depends(get_session)
 ) -> dict:
     match, _ = await _owned_match(session, user, match_id)
-    if match.status == OpportunityStatus.CONTACTED:
-        return {"status": match.status.value}
-    if match.status != OpportunityStatus.APPROVED or not match.proposal:
-        raise HTTPException(409, "Prepare and review the proposal before marking it as sent")
-    match.status = OpportunityStatus.CONTACTED
-    match.contacted_at = datetime.now(UTC)
-    await session.commit()
+    await transition_application(
+        session,
+        match,
+        OpportunityStatus.CONTACTED,
+        actor="web",
+    )
+    return {"status": match.status.value}
+
+
+@router.patch("/app/leads/{match_id}/status")
+async def update_lead_status(
+    match_id: int,
+    payload: LeadStatusUpdate,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    match, _ = await _owned_match(session, user, match_id)
+    await transition_application(
+        session,
+        match,
+        payload.status,
+        actor="web",
+        detail=payload.detail,
+    )
     return {"status": match.status.value}
 
 
@@ -309,13 +521,112 @@ async def personal_analytics(user: CurrentUser, session: AsyncSession = Depends(
         )
     ).all()
     counts = {status: count for status, count in rows}
-    return {
-        "relevant": sum(counts.values()),
-        "approved": counts.get(OpportunityStatus.APPROVED, 0),
-        "sent": counts.get(OpportunityStatus.CONTACTED, 0),
-        "replied": counts.get(OpportunityStatus.REPLIED, 0),
-        "won": counts.get(OpportunityStatus.WON, 0),
+    scanned = await session.scalar(select(func.count()).select_from(Opportunity)) or 0
+    sent_statuses = {
+        OpportunityStatus.CONTACTED,
+        OpportunityStatus.REPLIED,
+        OpportunityStatus.INTERVIEW,
+        OpportunityStatus.WON,
+        OpportunityStatus.LOST,
     }
+    response_statuses = {
+        OpportunityStatus.REPLIED,
+        OpportunityStatus.INTERVIEW,
+        OpportunityStatus.WON,
+    }
+    sent = sum(counts.get(status, 0) for status in sent_statuses)
+    responses = sum(counts.get(status, 0) for status in response_statuses)
+    approved = counts.get(OpportunityStatus.APPROVED, 0) + sent
+    interviews = counts.get(OpportunityStatus.INTERVIEW, 0) + counts.get(
+        OpportunityStatus.WON, 0
+    )
+    proposals = (
+        await session.scalar(
+            select(func.count())
+            .select_from(UserOpportunity)
+            .where(
+                UserOpportunity.user_id == user.id,
+                UserOpportunity.proposal.is_not(None),
+            )
+        )
+        or 0
+    )
+    source_rows = (
+        await session.execute(
+            select(Opportunity.source, func.count())
+            .join(UserOpportunity, UserOpportunity.opportunity_id == Opportunity.id)
+            .where(UserOpportunity.user_id == user.id)
+            .group_by(Opportunity.source)
+            .order_by(func.count().desc())
+            .limit(5)
+        )
+    ).all()
+    return {
+        "scanned": scanned,
+        "relevant": sum(counts.values()),
+        "approved": approved,
+        "sent": sent,
+        "replied": responses,
+        "interviews": interviews,
+        "won": counts.get(OpportunityStatus.WON, 0),
+        "lost": counts.get(OpportunityStatus.LOST, 0),
+        "pendingActions": counts.get(OpportunityStatus.RECOMMENDED, 0)
+        + counts.get(OpportunityStatus.APPROVED, 0),
+        "responseRate": round((responses / sent) * 100, 1) if sent else 0,
+        "estimatedTimeSavedMinutes": proposals * 10,
+        "topSources": [{"source": source, "count": count} for source, count in source_rows],
+    }
+
+
+@router.get("/app/sources")
+async def list_sources(
+    request: Request,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> list[dict]:
+    del user
+    configured = request.app.state.runtime.settings.load_sources()
+    latest_ids = (
+        select(CollectorRun.source, func.max(CollectorRun.id).label("run_id"))
+        .group_by(CollectorRun.source)
+        .subquery()
+    )
+    runs = (
+        await session.scalars(
+            select(CollectorRun).join(latest_ids, CollectorRun.id == latest_ids.c.run_id)
+        )
+    ).all()
+    latest = {run.source: run for run in runs}
+    result = []
+    for source in configured:
+        run = latest.get(source.name)
+        if not source.enabled:
+            connection_status = "planned" if source.collector == "pending" else "available"
+        elif run and run.error:
+            connection_status = "attention"
+        elif run:
+            connection_status = "connected"
+        else:
+            connection_status = "syncing"
+        capabilities = list(dict.fromkeys(source.capabilities))
+        if source.apply_mode in {"send_allowed", "api_allowed"} and "quick_apply" not in capabilities:
+            capabilities.append("quick_apply")
+        if source.submission_type == "browser_extension" and "autofill" not in capabilities:
+            capabilities.append("autofill")
+        result.append(
+            {
+                "name": source.name,
+                "displayName": source.display_name or _source_display_name(source.name),
+                "sourceType": source.type,
+                "enabled": source.enabled,
+                "connectionStatus": connection_status,
+                "submissionType": source.submission_type,
+                "capabilities": capabilities,
+                "lastRunAt": run.finished_at.isoformat() if run and run.finished_at else None,
+                "lastError": run.error[:240] if run and run.error else None,
+            }
+        )
+    return result
 
 
 @router.get("/app/portfolio")
@@ -339,6 +650,48 @@ async def add_portfolio(
     db_user.portfolio = [*(db_user.portfolio or []), project.model_dump()]
     await session.commit()
     return project.model_dump()
+
+
+@router.patch("/app/portfolio/{slug}")
+async def update_portfolio(
+    slug: str,
+    payload: PortfolioUpdate,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    db_user = await session.get(TelegramUser, user.id)
+    projects = _portfolio_for(db_user)
+    project = next((item for item in projects if item.slug == slug), None)
+    if not project:
+        raise HTTPException(404, "Кейс не найден")
+    values = payload.model_dump(exclude_unset=True)
+    if "title" in values:
+        project.title = values["title"].strip()
+    if "description" in values:
+        project.description = values["description"].strip()
+    if "skills" in values:
+        project.skills = _clean_values(values["skills"], 50)
+    if "url" in values:
+        project.url = values["url"].strip() if values["url"] else None
+    db_user.portfolio = [item.model_dump() for item in projects]
+    await session.commit()
+    return project.model_dump()
+
+
+@router.delete("/app/portfolio/{slug}")
+async def delete_portfolio(
+    slug: str,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    db_user = await session.get(TelegramUser, user.id)
+    projects = _portfolio_for(db_user)
+    remaining = [item for item in projects if item.slug != slug]
+    if len(remaining) == len(projects):
+        raise HTTPException(404, "Кейс не найден")
+    db_user.portfolio = [item.model_dump() for item in remaining]
+    await session.commit()
+    return {"deleted": True}
 
 
 @router.patch("/app/agent")
@@ -419,3 +772,17 @@ def _clean_values(values: list[str], maximum: int) -> list[str]:
 
 def _portfolio_for(user: TelegramUser) -> list[PortfolioProject]:
     return [PortfolioProject.model_validate(item) for item in (user.portfolio or [])]
+
+
+def _source_display_name(name: str) -> str:
+    known = {
+        "hh_ru": "HeadHunter",
+        "freelancer_com": "Freelancer",
+        "fl_ru": "FL.ru",
+        "freelance_ru": "Freelance.ru",
+        "kwork_projects": "Kwork",
+        "hackernews": "Hacker News",
+        "remoteok": "Remote OK",
+        "weworkremotely": "We Work Remotely",
+    }
+    return known.get(name, name.removeprefix("telegram_").replace("_", " ").title())

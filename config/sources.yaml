@@ -207,6 +207,7 @@ sources:
     options: {limit: 20}
 
   - name: freelancer_com
+    display_name: Freelancer
     type: api
     language: multi
     priority: tier_a
@@ -239,9 +240,9 @@ sources:
     url: https://problogger.com/jobs/
 
   # Russia / CIS: public pages need a dedicated parser and production observation.
-  - {name: freelance_ru, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 1800, url: "https://freelance.ru/task/"}
-  - {name: fl_ru, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 1800, url: "https://www.fl.ru/projects/"}
-  - {name: kwork_projects, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 1800, url: "https://kwork.ru/projects"}
+  - {name: freelance_ru, display_name: Freelance.ru, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, submission_type: browser_extension, capabilities: [autofill, requires_confirmation], poll_interval: 1800, url: "https://freelance.ru/task/"}
+  - {name: fl_ru, display_name: FL.ru, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, submission_type: browser_extension, capabilities: [autofill, requires_confirmation], poll_interval: 1800, url: "https://www.fl.ru/projects/"}
+  - {name: kwork_projects, display_name: Kwork, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, submission_type: browser_extension, capabilities: [autofill, requires_confirmation], poll_interval: 1800, url: "https://kwork.ru/projects"}
   - {name: weblancer, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 1800, url: "https://www.weblancer.net/freelance/"}
   - {name: workspace_tenders, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://workspace.ru/tenders/"}
   - {name: dprofile_projects, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 1800, url: "https://dprofile.ru/jobs/projects"}

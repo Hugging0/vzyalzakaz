@@ -73,6 +73,11 @@ class SourceConfig(BaseModel):
     enabled: bool = True
     collector: str
     apply_mode: Literal["send_allowed", "draft_only", "api_allowed"] = "draft_only"
+    display_name: str | None = None
+    submission_type: Literal["manual", "api", "browser_extension"] = "manual"
+    capabilities: list[
+        Literal["collect", "quick_apply", "autofill", "requires_confirmation"]
+    ] = Field(default_factory=lambda: ["collect", "requires_confirmation"])
     poll_interval: int = 1800
     url: str | None = None
     channel: str | None = None
@@ -128,6 +133,9 @@ class AppSettings(BaseSettings):
     mini_app_session_secret: str | None = None
     mini_app_auth_max_age_seconds: int = 86_400
     mini_app_session_ttl_seconds: int = 604_800
+    web_login_ticket_ttl_seconds: int = 600
+    web_session_ttl_seconds: int = 2_592_000
+    web_session_cookie_name: str = "vzyalzakaz_session"
     allow_dev_auth: bool = False
     dev_telegram_user_id: int | None = None
 

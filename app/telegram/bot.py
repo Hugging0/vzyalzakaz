@@ -8,6 +8,7 @@ import socket
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import quote, urlparse
 
 import aiohttp
 from sqlalchemy import func, select
@@ -15,9 +16,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.config import AppSettings, PortfolioProject
 from app.models import CollectorRun, Opportunity, OpportunityStatus, TelegramUser, UserOpportunity
+from app.services.application_workflow import record_event, transition_application
 from app.services.portfolio_documents import extract_document_text
 from app.services.recommendations import RecommendationService
 from app.services.voice import VoiceTranscriber
+from app.services.web_sessions import create_login_ticket
 from app.telegram.ui import app_button, button
 
 logger = logging.getLogger(__name__)
@@ -78,7 +81,7 @@ class TelegramBot:
                         "menu_button": {
                             "type": "web_app",
                             "text": "Кабинет",
-                            "web_app": {"url": self.settings.mini_app_url},
+                            "web_app": {"url": self._app_url("/app/today")},
                         }
                     },
                 )
@@ -104,6 +107,9 @@ class TelegramBot:
                 await session.scalars(select(TelegramUser).where(TelegramUser.is_active.is_(True)))
             ).all()
             for user in users:
+                notifications = (user.profile or {}).get("ui", {}).get("notifications", {})
+                if notifications.get("strongMatches", True) is False:
+                    continue
                 match = await self.recommendations.ensure_match(session, user, opportunity)
                 if not match or match.notified_at:
                     continue
@@ -157,7 +163,14 @@ class TelegramBot:
                     )
                     return
                 user = await self.recommendations.register_user(session, telegram_data)
-                await self._welcome(user)
+                start_value = text.partition(" ")[2].strip()
+                if start_value.startswith("web-login"):
+                    await self._send_web_login_link(
+                        user,
+                        _web_login_destination(start_value),
+                    )
+                else:
+                    await self._welcome(user)
                 return
             if not user:
                 if callback:
@@ -188,7 +201,7 @@ class TelegramBot:
             return
         await self._send_message(
             user.telegram_user_id,
-            "Выберите действие ниже. Профиль можно обновить обычным сообщением — без команд.",
+            "Выберите действие ниже. Профиль можно обновить обычным сообщением без команд.",
             self._home_keyboard(configured=True),
         )
 
@@ -210,7 +223,7 @@ class TelegramBot:
                 "Поиск настроен. Отклики остаются под вашим контролем."
                 if configured
                 else (
-                    "Расскажите о себе одним сообщением — текстом или голосом. "
+                    "Расскажите о себе одним сообщением: текстом или голосом. "
                     "Портфолио можно добавить позже."
                 )
             ),
@@ -222,7 +235,10 @@ class TelegramBot:
         command = command.lower().split("@")[0]
         value = value.strip()
         if command == "/start":
-            await self._welcome(user)
+            if value.startswith("web-login"):
+                await self._send_web_login_link(user, _web_login_destination(value))
+            else:
+                await self._welcome(user)
         elif command == "/help":
             await self._send_message(
                 user.telegram_user_id,
@@ -357,38 +373,38 @@ class TelegramBot:
             await session.commit()
         await self._send_message(
             user.telegram_user_id,
-            "Уведомления включены." if active else "Уведомления приостановлены. /resume — включить.",
+            "Уведомления включены." if active else "Уведомления приостановлены. /resume включает их.",
         )
 
     async def _open_mini_app(self, user: TelegramUser) -> None:
         if not self.settings.mini_app_url:
             await self._send_message(
                 user.telegram_user_id,
-                "Mini App будет подключён после настройки HTTPS-домена. Пока используйте команды бота.",
+                "Веб-кабинет будет доступен после настройки HTTPS-домена.",
             )
             return
         await self._send_message(
             user.telegram_user_id,
-            "Лента, отклики и настройки — в кабинете.",
+            "Заказы, отклики и настройки находятся в веб-кабинете.",
             self._app_keyboard("Открыть кабинет"),
         )
 
     def _app_keyboard(self, label: str) -> list | None:
         if not self.settings.mini_app_url:
             return None
-        return [[app_button(label, self.settings.mini_app_url)]]
+        return [[app_button(label, self._app_url("/app/today"))]]
 
     def _home_keyboard(self, configured: bool) -> list:
         rows = []
         if configured and self.settings.mini_app_url:
-            rows.append([app_button("Открыть проекты", self.settings.mini_app_url)])
+            rows.append([app_button("Открыть кабинет", self._app_url("/app/today"))])
             rows.append([button("Обновить профиль", callback_data="intake:start")])
         else:
             rows.append(
                 [button("Рассказать о себе", callback_data="intake:start", style="primary")]
             )
             if self.settings.mini_app_url:
-                rows.append([app_button("Заполнить форму", self.settings.mini_app_url)])
+                rows.append([app_button("Заполнить в кабинете", self._app_url("/app/profile"))])
         return rows
 
     async def _complete_profile_from_text(self, user: TelegramUser, text: str) -> None:
@@ -404,14 +420,14 @@ class TelegramBot:
             await self.recommendations.apply_profile_intake(session, db_user, text)
         keyboard = []
         if self.settings.mini_app_url:
-            keyboard.append([app_button("Смотреть проекты", self.settings.mini_app_url)])
+            keyboard.append([app_button("Смотреть заказы", self._app_url("/app/orders"))])
         keyboard.append(
             [button("Добавить портфолио", callback_data="intake:portfolio", style="success")]
         )
         await self._send_message(
             user.telegram_user_id,
             "<b>Профиль готов.</b> Я выделил навыки из рассказа и запустил подбор. "
-            "Портфолио необязательно — его можно прислать файлом сейчас или позже.",
+            "Портфолио необязательно. Его можно прислать файлом сейчас или позже.",
             keyboard,
         )
 
@@ -547,7 +563,13 @@ class TelegramBot:
             match, opportunity, db_user = row
             if action == "approve":
                 proposal = await self.recommendations.generate_proposal(session, db_user, match, opportunity)
+                await record_event(session, match, "proposal_ready", actor="telegram")
+                await session.commit()
                 keyboard = []
+                if self.settings.mini_app_url:
+                    keyboard.append(
+                        [app_button("Проверить отклик", self._app_url(f"/app/applications/{match.id}"))]
+                    )
                 if opportunity.contact_username:
                     username = opportunity.contact_username.lstrip("@")
                     keyboard.append(
@@ -566,7 +588,7 @@ class TelegramBot:
                 )
                 await self._send_message(
                     user.telegram_user_id,
-                    "<b>Персональный черновик — проверьте и отправьте вручную</b>\n\n"
+                    "<b>Персональный черновик для ручной проверки</b>\n\n"
                     f"<pre>{html.escape(proposal)}</pre>",
                     keyboard,
                 )
@@ -582,20 +604,25 @@ class TelegramBot:
                 await self._send_message(user.telegram_user_id, "Почему пропускаем?", keyboard)
                 await self._answer_callback(callback["id"], "Выберите причину")
             elif action == "reason":
-                match.status = OpportunityStatus.SKIPPED
                 match.skip_reason = SKIP_REASONS.get(extra[0] if extra else "", "not interested")
-                await session.commit()
+                await transition_application(
+                    session,
+                    match,
+                    OpportunityStatus.SKIPPED,
+                    actor="telegram",
+                    detail=match.skip_reason,
+                )
                 await self._answer_callback(callback["id"], "Сохранено")
             elif action == "details":
                 await self._send_message(user.telegram_user_id, _format_details(opportunity, match))
                 await self._answer_callback(callback["id"])
             elif action == "contacted":
-                if match.status != OpportunityStatus.APPROVED:
-                    await self._answer_callback(callback["id"], "Сначала создайте черновик")
-                    return
-                match.status = OpportunityStatus.CONTACTED
-                match.contacted_at = datetime.now(UTC)
-                await session.commit()
+                await transition_application(
+                    session,
+                    match,
+                    OpportunityStatus.CONTACTED,
+                    actor="telegram",
+                )
                 await self._answer_callback(callback["id"], "Отклик отмечен")
 
     async def _handle_intake_callback(
@@ -680,7 +707,7 @@ class TelegramBot:
                 .limit(1)
             )
         error_text = (
-            f"Последняя ошибка: {html.escape(last_error.source)} — "
+            f"Последняя ошибка: {html.escape(last_error.source)}. "
             f"{html.escape((last_error.error or '')[:300])}"
             if last_error
             else "Ошибок collector пока нет"
@@ -708,21 +735,61 @@ class TelegramBot:
         )
 
     async def _send_card(self, chat_id: int, opportunity: Opportunity, match: UserOpportunity) -> None:
-        keyboard = [
-            [
-                button(
-                    "Подготовить отклик",
-                    callback_data=f"approve:{match.id}",
-                    style="primary",
-                ),
-                button("Не подходит", callback_data=f"skip:{match.id}", style="danger"),
-            ]
-        ]
-        second_row = [button("Почему подходит", callback_data=f"details:{match.id}")]
-        if opportunity.source_url:
-            second_row.insert(0, button("Источник", url=opportunity.source_url))
-        keyboard.append(second_row)
+        keyboard = []
+        first_row = []
+        if self.settings.mini_app_url:
+            first_row.append(
+                app_button("Посмотреть", self._app_url(f"/app/orders/{match.id}"))
+            )
+        first_row.append(
+            button(
+                "Подготовить отклик",
+                callback_data=f"approve:{match.id}",
+                style="primary",
+            )
+        )
+        keyboard.append(first_row)
+        keyboard.append(
+            [button("Не подходит", callback_data=f"skip:{match.id}", style="danger")]
+        )
         await self._send_message(chat_id, _format_card(opportunity, match), keyboard)
+
+    async def _send_web_login_link(
+        self,
+        user: TelegramUser,
+        destination: str = "/app/today",
+    ) -> None:
+        origin = self._public_origin()
+        if not origin:
+            await self._send_message(user.telegram_user_id, "Веб-вход пока не настроен.")
+            return
+        async with self.session_factory() as session:
+            db_user = await session.get(TelegramUser, user.id)
+            ticket = await create_login_ticket(session, db_user, self.settings)
+        login_url = f"{origin}/auth/telegram?ticket={ticket}&next={quote(destination, safe='')}"
+        await self._send_message(
+            user.telegram_user_id,
+            "Ссылка действует 10 минут и откроет ваш кабинет в браузере.",
+            [[button("Войти в кабинет", url=login_url, style="primary")]],
+        )
+
+    def _public_origin(self) -> str | None:
+        if self.settings.public_base_url:
+            return self.settings.public_base_url.rstrip("/")
+        if self.settings.mini_app_url:
+            parsed = urlparse(self.settings.mini_app_url)
+            if parsed.scheme and parsed.netloc:
+                return f"{parsed.scheme}://{parsed.netloc}"
+        return None
+
+    def _app_url(self, path: str) -> str:
+        origin = None
+        if self.settings.mini_app_url:
+            parsed = urlparse(self.settings.mini_app_url)
+            if parsed.scheme and parsed.netloc:
+                origin = f"{parsed.scheme}://{parsed.netloc}"
+        origin = origin or self._public_origin()
+        return f"{origin}{path}" if origin else (self.settings.mini_app_url or path)
 
     async def _send_message(self, chat_id: int, text: str, keyboard: list | None = None) -> dict:
         payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
@@ -771,6 +838,30 @@ class TelegramBot:
         return body.get("result")
 
 
+def _web_login_destination(payload: str) -> str:
+    value = payload.removeprefix("web-login").lstrip("-")
+    static_routes = {
+        "": "/app/today",
+        "today": "/app/today",
+        "orders": "/app/orders",
+        "applications": "/app/applications",
+        "portfolio": "/app/portfolio",
+        "connections": "/app/connections",
+        "analytics": "/app/analytics",
+        "profile": "/app/profile",
+        "settings": "/app/settings",
+    }
+    if value in static_routes:
+        return static_routes[value]
+    kind, _, raw_id = value.partition("-")
+    if raw_id.isdigit() and int(raw_id) > 0:
+        if kind == "order":
+            return f"/app/orders/{raw_id}"
+        if kind == "application":
+            return f"/app/applications/{raw_id}"
+    return "/app/today"
+
+
 def _help_text() -> str:
     return (
         "<b>Как это работает</b>\n\n"
@@ -791,22 +882,13 @@ def _format_card(opportunity: Opportunity, match: UserOpportunity) -> str:
     if opportunity.budget_min or opportunity.budget_max:
         low = f"{opportunity.budget_min:,.0f}" if opportunity.budget_min else "?"
         high = f"{opportunity.budget_max:,.0f}" if opportunity.budget_max else "?"
-        budget = f"{low}–{high} {opportunity.currency or ''}".strip()
-    effort = f"~{match.estimated_effort_hours:g} ч" if match.estimated_effort_hours else "нужна оценка"
-    hourly = (
-        f"~{match.estimated_effective_hourly_rate:,.0f} ₽/ч"
-        if match.estimated_effective_hourly_rate
-        else "не рассчитано"
-    )
+        budget = f"{low}-{high} {opportunity.currency or ''}".strip()
     analysis = match.analysis or {}
-    risks = analysis.get("risks") or []
-    risk_text = f"\nРиск: {html.escape(str(risks[0]))}" if risks else ""
     return (
-        f"<b>{html.escape(opportunity.title[:120])}</b>\n"
-        f"{match.final_score:.0f}% совпадение · {html.escape(opportunity.source)}\n"
-        f"{html.escape(budget)} · {effort} · {hourly}\n\n"
+        f"<b>Сильный заказ, {match.final_score:.0f}% совпадение</b>\n"
+        f"{html.escape(opportunity.title[:140])}\n"
+        f"{html.escape(opportunity.source)} · {html.escape(budget)}\n\n"
         f"{html.escape(str(analysis.get('fit_reason') or 'Нужна ручная проверка'))}"
-        f"{risk_text}"
     )
 
 

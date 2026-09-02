@@ -37,6 +37,7 @@ services:
         NEXT_PUBLIC_ALLOW_DEV_AUTH: ${ALLOW_DEV_AUTH:-false}
     environment:
       BACKEND_URL: http://jobhunter:8000
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-vzyal_zakaz_bot}
     depends_on:
       - jobhunter
     restart: unless-stopped
