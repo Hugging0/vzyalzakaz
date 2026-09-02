@@ -86,7 +86,7 @@ export function AgentSettingsView({ profile }: { profile: Profile }) {
           </AppCard>
           <AppCard>
             <h2>Уведомления</h2>
-            <AppRangeField id="settings-threshold" label="Сообщать о совпадении от" value={form.threshold} min={60} max={95} onChange={(threshold) => setForm({ ...form, threshold })} hint="Порог влияет только на срочные сообщения в Telegram." />
+            <AppRangeField id="settings-threshold" label="Сообщать об оценке от" value={form.threshold} min={60} max={95} suffix="/100" onChange={(threshold) => setForm({ ...form, threshold })} hint="Порог влияет только на срочные сообщения в Telegram." />
             <div className="toggle-list">
               <AppToggle id="notify-matches" label="Сильные заказы" checked={form.notifications.strongMatches} onChange={(strongMatches) => setForm({ ...form, notifications: { ...form.notifications, strongMatches } })} />
               <AppToggle id="notify-replies" label="Ответы заказчиков" checked={form.notifications.replies} onChange={(replies) => setForm({ ...form, notifications: { ...form.notifications, replies } })} />

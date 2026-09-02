@@ -7,6 +7,7 @@ type Props = {
   step?: number;
   hint?: string;
   disabled?: boolean;
+  suffix?: string;
   onChange: (value: number) => void;
 };
 
@@ -19,13 +20,14 @@ export function AppRangeField({
   step = 1,
   hint,
   disabled,
+  suffix = "%",
   onChange,
 }: Props) {
   return (
     <div className="app-field app-range-field">
       <div className="range-label-row">
         <label className="field-label" htmlFor={id}>{label}</label>
-        <output htmlFor={id}>{value}%</output>
+        <output htmlFor={id}>{value}{suffix}</output>
       </div>
       <input
         id={id}

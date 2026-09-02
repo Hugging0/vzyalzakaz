@@ -150,6 +150,11 @@ class AppSettings(BaseSettings):
     registration_invite_code: str | None = None
     max_users: int = 100
     onboarding_backfill_limit: int = 200
+    matching_candidate_similarity_threshold: float = Field(default=8, ge=0, le=100)
+    matching_persist_score: float = Field(default=35, ge=0, le=100)
+    matching_llm_rerank_enabled: bool = True
+    matching_llm_rerank_threshold: float = Field(default=72, ge=0, le=100)
+    matching_llm_rerank_top_k: int = Field(default=8, ge=0, le=50)
     mini_app_session_secret: str | None = None
     mini_app_auth_max_age_seconds: int = 86_400
     mini_app_session_ttl_seconds: int = 604_800

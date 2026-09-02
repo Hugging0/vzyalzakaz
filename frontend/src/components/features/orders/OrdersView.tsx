@@ -25,7 +25,7 @@ export function OrdersView() {
       <AppPageHeader title="Заказы" description="Все найденные проекты с объяснением совпадения и текущим статусом." />
       <AppCard className="filter-bar">
         <div className="filter-title"><SlidersHorizontal size={20} /><strong>Фильтры</strong></div>
-        <AppRangeField id="orders-score" label="Совпадение от" value={minimumScore} min={60} max={95} onChange={setMinimumScore} />
+        <AppRangeField id="orders-score" label="Оценка от" value={minimumScore} min={60} max={95} suffix="/100" onChange={setMinimumScore} />
         <AppField label="Источник" htmlFor="orders-source"><select id="orders-source" className="app-input" value={source} onChange={(event) => setSource(event.target.value)}><option value="">Все источники</option>{sources.map((item) => <option value={item} key={item}>{item}</option>)}</select></AppField>
       </AppCard>
       {query.isError ? <AppEmptyState title="Не удалось загрузить заказы" text="Проверьте соединение и повторите запрос." action="Повторить" onAction={() => void query.refetch()} /> : leads.length ? <div className="order-list">{leads.map((lead) => <OrderListItem key={lead.id} lead={lead} />)}</div> : <AppEmptyState title="Заказов по этим фильтрам нет" text="Снизьте порог совпадения или выберите другой источник." />}

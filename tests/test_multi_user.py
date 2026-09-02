@@ -50,7 +50,7 @@ async def test_personal_matches_do_not_leak_between_users(settings, profile):
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
     portfolio = settings.load_portfolio()
-    pipeline = OpportunityPipeline(settings, profile, portfolio)
+    pipeline = OpportunityPipeline(settings)
     service = RecommendationService(settings, profile, portfolio)
 
     raw = RawOpportunity(
@@ -86,4 +86,8 @@ async def test_personal_matches_do_not_leak_between_users(settings, profile):
     assert python_match.user_id == python_user.id
     assert other_match is None
     assert [item.user_id for item in stored] == [python_user.id]
+    assert opportunity.final_score is None
+    assert opportunity.analysis == {}
+    assert python_match.analysis["why_recommended"][0]["source_facts"]
+    assert python_match.analysis["why_recommended"][0]["profile_facts"]
     await engine.dispose()

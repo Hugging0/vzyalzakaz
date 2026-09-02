@@ -28,7 +28,6 @@ async def health(request: Request) -> dict:
 @router.get("/opportunities", response_model=list[OpportunityRead])
 async def opportunities(
     status: OpportunityStatus | None = None,
-    minimum_score: float | None = Query(None, ge=0, le=100),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(get_session),
@@ -36,9 +35,7 @@ async def opportunities(
     query = select(Opportunity)
     if status:
         query = query.where(Opportunity.status == status)
-    if minimum_score is not None:
-        query = query.where(Opportunity.final_score >= minimum_score)
-    query = query.order_by(Opportunity.final_score.desc().nullslast(), Opportunity.collected_at.desc())
+    query = query.order_by(Opportunity.collected_at.desc())
     return list((await session.scalars(query.offset(offset).limit(limit))).all())
 
 
@@ -59,9 +56,10 @@ async def update_status(
     item = await session.get(Opportunity, opportunity_id)
     if not item:
         raise HTTPException(404, "Opportunity not found")
+    if update.status not in {OpportunityStatus.NEW, OpportunityStatus.FILTERED}:
+        raise HTTPException(422, "Global opportunity status can only be new or filtered")
     item.status = update.status
-    if update.status == OpportunityStatus.SKIPPED:
-        item.skip_reason = update.reason
+    item.skip_reason = update.reason if update.status == OpportunityStatus.FILTERED else None
     await session.commit()
     await session.refresh(item)
     return item
@@ -69,10 +67,16 @@ async def update_status(
 
 @router.get("/analytics", response_model=AnalyticsRead)
 async def analytics(session: AsyncSession = Depends(get_session)) -> AnalyticsRead:
-    rows = (
+    global_rows = (
         await session.execute(select(Opportunity.status, func.count()).group_by(Opportunity.status))
     ).all()
-    counts = {status: count for status, count in rows}
+    global_counts = {status: count for status, count in global_rows}
+    personal_rows = (
+        await session.execute(
+            select(UserOpportunity.status, func.count()).group_by(UserOpportunity.status)
+        )
+    ).all()
+    personal_counts = {status: count for status, count in personal_rows}
     total = await session.scalar(select(func.count()).select_from(Opportunity)) or 0
     return AnalyticsRead(
         users=await session.scalar(select(func.count()).select_from(TelegramUser)) or 0,
@@ -82,13 +86,13 @@ async def analytics(session: AsyncSession = Depends(get_session)) -> AnalyticsRe
         or 0,
         personal_matches=await session.scalar(select(func.count()).select_from(UserOpportunity)) or 0,
         scanned=total,
-        filtered=counts.get(OpportunityStatus.FILTERED, 0),
-        recommended=counts.get(OpportunityStatus.RECOMMENDED, 0),
-        approved=counts.get(OpportunityStatus.APPROVED, 0),
-        contacted=counts.get(OpportunityStatus.CONTACTED, 0),
-        replied=counts.get(OpportunityStatus.REPLIED, 0),
-        interviews=counts.get(OpportunityStatus.INTERVIEW, 0),
-        won=counts.get(OpportunityStatus.WON, 0),
+        filtered=global_counts.get(OpportunityStatus.FILTERED, 0),
+        recommended=personal_counts.get(OpportunityStatus.RECOMMENDED, 0),
+        approved=personal_counts.get(OpportunityStatus.APPROVED, 0),
+        contacted=personal_counts.get(OpportunityStatus.CONTACTED, 0),
+        replied=personal_counts.get(OpportunityStatus.REPLIED, 0),
+        interviews=personal_counts.get(OpportunityStatus.INTERVIEW, 0),
+        won=personal_counts.get(OpportunityStatus.WON, 0),
     )
 
 

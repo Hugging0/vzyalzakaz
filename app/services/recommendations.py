@@ -6,17 +6,27 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import AppSettings, Candidate, CandidateProfile, PortfolioProject
-from app.models import Opportunity, OpportunityStatus, TelegramUser, UserOpportunity
-from app.schemas import RawOpportunity
-from app.services.content_classifier import DEMAND_CATEGORIES, is_demand_category
+from app.models import (
+    ClassificationMethod,
+    Opportunity,
+    OpportunityStatus,
+    TelegramUser,
+    UserOpportunity,
+)
+from app.schemas import OpportunityFacts, RawOpportunity, UserMatchAnalysis
+from app.services.content_classifier import (
+    DEMAND_CATEGORIES,
+    ContentClassification,
+    is_demand_category,
+)
+from app.services.matching import UserMatchAnalyzer
+from app.services.opportunity_facts import FACTS_VERSION, OpportunityFactExtractor
 from app.services.portfolio import select_portfolio
-from app.services.prefilter import evaluate
-from app.services.ranking import freshness_score
-from app.services.scoring import OpportunityAnalyzer
+from app.services.scoring import CandidateAssistant
 
 
 class RecommendationService:
-    """Creates isolated, personalized matches without repeating the global LLM call."""
+    """Builds user-specific matches from globally persisted, candidate-neutral facts."""
 
     def __init__(
         self,
@@ -27,6 +37,8 @@ class RecommendationService:
         self.settings = settings
         self.default_profile = default_profile
         self.default_portfolio = default_portfolio
+        self.fact_extractor = OpportunityFactExtractor(settings)
+        self.matcher = UserMatchAnalyzer(settings)
 
     async def register_user(self, session: AsyncSession, telegram_data: dict) -> TelegramUser:
         telegram_user_id = int(telegram_data["id"])
@@ -111,7 +123,7 @@ class RecommendationService:
     ) -> TelegramUser:
         """Turn one natural-language introduction into a usable search profile."""
         profile = self.profile_for(user)
-        intake = await OpportunityAnalyzer(self.settings, profile).extract_profile(text)
+        intake = await CandidateAssistant(self.settings, profile).extract_profile(text)
         profile.candidate.about = text.strip()[:6000]
         profile.candidate.skills = list(dict.fromkeys([*profile.candidate.skills, *intake.skills]))[:100]
         profile.candidate.languages = list(
@@ -146,8 +158,13 @@ class RecommendationService:
         session: AsyncSession,
         user: TelegramUser,
         opportunity: Opportunity,
+        *,
+        allow_llm_rerank: bool = True,
     ) -> UserOpportunity | None:
-        if not is_demand_category(opportunity.content_category):
+        if (
+            opportunity.status == OpportunityStatus.FILTERED
+            or not is_demand_category(opportunity.content_category)
+        ):
             return None
         existing = await session.scalar(
             select(UserOpportunity).where(
@@ -159,70 +176,50 @@ class RecommendationService:
             return existing
 
         profile = self.profile_for(user)
-        if not source_matches_specialties(user, opportunity):
-            return None
-        raw = _to_raw(opportunity)
-        prefilter = evaluate(raw, profile)
-        if not prefilter.passed:
-            return None
-
         portfolio = self.portfolio_for(user)
-        portfolio_item = select_portfolio(
-            f"{opportunity.title} {opportunity.description} {opportunity.raw_text}", portfolio
-        )
-        local_settings = self.settings.model_copy(update={"llm_provider": "disabled", "llm_api_key": None})
-        personalized = await OpportunityAnalyzer(local_settings, profile).analyze(raw, portfolio_item)
-        if not personalized.required_skills:
-            return None
-        analysis = dict(opportunity.analysis or {})
-        analysis.update(
-            {
-                "required_skills": personalized.required_skills,
-                "missing_skills": personalized.missing_skills,
-                "fit_reason": personalized.fit_reason,
-                "recommended_portfolio_project": portfolio_item.slug if portfolio_item else "",
-            }
-        )
-        money = personalized.money_score
-        effort = opportunity.estimated_effort_hours or personalized.estimated_hours or None
-        fresh = freshness_score(opportunity.published_at)
-        score = personalized_match_score(
-            personalized.fit_score,
-            prefilter.score,
-            money,
-            personalized.win_score,
-            fresh,
-        )
-        if score < min(profile.ranking.digest_threshold, 60):
+        facts = await self._facts_for(session, opportunity)
+        eligibility = self.matcher.cheap_eligibility(user, opportunity, facts, profile)
+        if not eligibility.passed:
             return None
 
-        effective_rate = None
-        expected = opportunity.budget_max or opportunity.budget_min
-        if expected and effort and opportunity.currency == "RUB":
-            effective_rate = round(expected / effort, 2)
+        analysis = await self.matcher.analyze(
+            opportunity,
+            facts,
+            profile,
+            portfolio,
+            allow_llm_rerank=allow_llm_rerank,
+        )
+        features = analysis.feature_vector
+        if (
+            features.get("semantic_similarity", 0)
+            < self.settings.matching_candidate_similarity_threshold
+            and features.get("skill_overlap", 0) == 0
+            and features.get("portfolio_similarity", 0)
+            < self.settings.matching_candidate_similarity_threshold
+        ):
+            return None
+        if analysis.rank_score < self.settings.matching_persist_score:
+            return None
+
         match = UserOpportunity(
             user_id=user.id,
             opportunity_id=opportunity.id,
-            prefilter_score=prefilter.score,
-            prefilter_reasons=prefilter.reasons,
-            fit_score=personalized.fit_score,
-            money_score=money,
-            win_score=personalized.win_score,
-            freshness_score=fresh,
-            final_score=score,
-            estimated_effort_hours=effort,
-            estimated_effective_hourly_rate=effective_rate,
-            analysis=analysis,
-            portfolio_item=portfolio_item.slug if portfolio_item else None,
+            prefilter_score=100,
+            prefilter_reasons=eligibility.reasons,
+            eligibility_reasons=eligibility.reasons,
             status=OpportunityStatus.RECOMMENDED,
         )
+        self._apply_analysis(match, opportunity, facts, analysis, portfolio)
         session.add(match)
         await session.commit()
         await session.refresh(match)
         return match
 
     async def backfill_user(
-        self, session: AsyncSession, user: TelegramUser, limit: int | None = None
+        self,
+        session: AsyncSession,
+        user: TelegramUser,
+        limit: int | None = None,
     ) -> list[tuple[UserOpportunity, Opportunity]]:
         opportunities = (
             await session.scalars(
@@ -235,11 +232,23 @@ class RecommendationService:
                 .limit(limit or self.settings.onboarding_backfill_limit)
             )
         ).all()
-        matches = []
+        matches: list[tuple[UserOpportunity, Opportunity]] = []
         for opportunity in opportunities:
-            match = await self.ensure_match(session, user, opportunity)
+            match = await self.ensure_match(
+                session,
+                user,
+                opportunity,
+                allow_llm_rerank=False,
+            )
             if match:
                 matches.append((match, opportunity))
+
+        if self.settings.matching_llm_rerank_enabled:
+            ranked = sorted(matches, key=lambda pair: pair[0].final_score, reverse=True)
+            for match, opportunity in ranked[: self.settings.matching_llm_rerank_top_k]:
+                if match.final_score >= self.settings.matching_llm_rerank_threshold:
+                    await self._rerank_existing(session, user, match, opportunity)
+        await session.commit()
         return matches
 
     async def reset_recommendations(self, session: AsyncSession, user: TelegramUser) -> None:
@@ -263,7 +272,7 @@ class RecommendationService:
             (item for item in self.portfolio_for(user) if item.slug == match.portfolio_item),
             None,
         )
-        proposal = await OpportunityAnalyzer(self.settings, profile).generate_proposal(
+        proposal = await CandidateAssistant(self.settings, profile).generate_proposal(
             _to_raw(opportunity), match.analysis, portfolio
         )
         match.proposal = proposal
@@ -271,6 +280,96 @@ class RecommendationService:
         match.approved_at = datetime.now(UTC)
         await session.commit()
         return proposal
+
+    async def _facts_for(
+        self,
+        session: AsyncSession,
+        opportunity: Opportunity,
+    ) -> OpportunityFacts:
+        if opportunity.facts and opportunity.facts_version == FACTS_VERSION:
+            return OpportunityFacts.model_validate(opportunity.facts)
+        classification = ContentClassification(
+            category=opportunity.content_category,
+            confidence=opportunity.classification_confidence or 0.5,
+            method=opportunity.classification_method or ClassificationMethod.DETERMINISTIC,
+            reasons=opportunity.classification_reasons or [],
+            fallback_used=opportunity.classification_fallback_used,
+            fallback_failed=opportunity.classification_fallback_failed,
+            latency_ms=opportunity.classification_latency_ms or 0,
+            version=opportunity.classification_version or "intent-v1",
+        )
+        facts = await self.fact_extractor.extract(_to_raw(opportunity), classification)
+        opportunity.facts = facts.model_dump(mode="json")
+        opportunity.facts_version = FACTS_VERSION
+        await session.commit()
+        return facts
+
+    async def _rerank_existing(
+        self,
+        session: AsyncSession,
+        user: TelegramUser,
+        match: UserOpportunity,
+        opportunity: Opportunity,
+    ) -> None:
+        profile = self.profile_for(user)
+        portfolio = self.portfolio_for(user)
+        facts = await self._facts_for(session, opportunity)
+        analysis = await self.matcher.analyze(
+            opportunity,
+            facts,
+            profile,
+            portfolio,
+            allow_llm_rerank=True,
+        )
+        self._apply_analysis(match, opportunity, facts, analysis, portfolio)
+
+    @staticmethod
+    def _apply_analysis(
+        match: UserOpportunity,
+        opportunity: Opportunity,
+        facts: OpportunityFacts,
+        analysis: UserMatchAnalysis,
+        portfolio: list[PortfolioProject],
+    ) -> None:
+        features = analysis.feature_vector
+        effort = facts.estimated_effort_max_hours or facts.estimated_effort_min_hours
+        expected = facts.budget_max or facts.budget_min
+        portfolio_item = select_portfolio(
+            f"{facts.title} {' '.join(facts.skills)} {' '.join(facts.deliverables)}",
+            portfolio,
+        )
+        match.semantic_score = features.get("semantic_similarity", 0)
+        match.fit_score = round(
+            features.get("semantic_similarity", 0) * 0.58
+            + features.get("skill_overlap", 0) * 0.42,
+            2,
+        )
+        match.money_score = features.get("economics_fit", 0)
+        match.win_score = round(
+            features.get("portfolio_similarity", 0) * 0.65
+            + features.get("client_attractiveness", 0) * 0.35,
+            2,
+        )
+        match.freshness_score = features.get("freshness", 0)
+        match.final_score = analysis.rank_score
+        match.estimated_effort_hours = effort
+        match.estimated_effective_hourly_rate = None
+        if expected and effort and facts.currency == "RUB":
+            match.estimated_effective_hourly_rate = round(expected / effort, 2)
+        match.analysis = analysis.model_dump(mode="json")
+        match.feature_vector = features
+        match.explanation = {
+            "strength_label": analysis.strength_label,
+            "dimensions": {
+                key: value.model_dump(mode="json") for key, value in analysis.dimensions.items()
+            },
+            "why_recommended": [item.model_dump(mode="json") for item in analysis.why_recommended],
+            "checks": [item.model_dump(mode="json") for item in analysis.checks],
+        }
+        match.match_confidence = analysis.confidence
+        match.reranked = analysis.reranked
+        match.ranking_version = analysis.ranking_version
+        match.portfolio_item = portfolio_item.slug if portfolio_item else None
 
 
 def personalized_match_score(
@@ -280,53 +379,9 @@ def personalized_match_score(
     win: float,
     freshness: float,
 ) -> float:
-    """Calibrated match score shown as a percentage in the personal product UI."""
+    """Legacy deterministic fallback retained for incident recovery, not primary ranking."""
     score = fit * 0.55 + prefilter * 0.20 + money * 0.10 + win * 0.10 + freshness * 0.05
     return round(max(0.0, min(100.0, score)), 2)
-
-
-def source_matches_specialties(user: TelegramUser, opportunity: Opportunity) -> bool:
-    ui = (user.profile or {}).get("ui", {})
-    preferred_sources = set(ui.get("preferred_sources", []))
-    if preferred_sources and opportunity.source not in preferred_sources:
-        return False
-    excluded_keywords = {
-        value.casefold().strip() for value in ui.get("excluded_keywords", []) if value.strip()
-    }
-    searchable = f"{opportunity.title} {opportunity.description}".casefold()
-    if any(keyword in searchable for keyword in excluded_keywords):
-        return False
-    project_types = {
-        value.casefold().strip() for value in ui.get("project_types", []) if value.strip()
-    }
-    employment_type = (opportunity.employment_type or "").casefold()
-    if project_types and employment_type:
-        if not any(value in employment_type or employment_type in value for value in project_types):
-            return False
-    specialties = set(ui.get("specialties", []))
-    if not specialties:
-        profile = CandidateProfile.model_validate(user.profile)
-        skills = " ".join(profile.candidate.skills).casefold()
-        inferred = {
-            "Разработка": ("python", "fastapi", "django", "react", "javascript", "typescript"),
-            "Дизайн": ("figma", "ui/ux", "web design", "branding"),
-            "Маркетинг": ("smm", "seo", "marketing"),
-            "Тексты": ("copywriting", "content", "editor"),
-            "Видео": ("video", "motion"),
-        }
-        specialties = {
-            name for name, markers in inferred.items() if any(marker in skills for marker in markers)
-        }
-    if not specialties:
-        return True
-    source = opportunity.source.casefold()
-    if "marketing" in source:
-        return "Маркетинг" in specialties
-    if "copywriting" in source:
-        return "Тексты" in specialties
-    if "design" in source:
-        return bool({"Дизайн", "Видео"} & specialties)
-    return True
 
 
 def _to_raw(opportunity: Opportunity) -> RawOpportunity:

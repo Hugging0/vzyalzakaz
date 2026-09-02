@@ -59,6 +59,7 @@
 - `contacted` запрещён без текста отклика;
 - API получил detail, filters, status transition, events, portfolio CRUD, sources/capabilities и расширенную аналитику;
 - пользовательские excluded keywords и preferred sources участвуют в matching;
+- глобальный ingestion не получает профиль пользователя и хранит `OpportunityFacts`; персональные `UserMatchAnalysis`, feature vector и объяснение хранятся только в `UserOpportunity`;
 - UI не вычисляет возможности площадки по её имени.
 
 ### Telegram
@@ -142,7 +143,7 @@ Cookies и passwords площадок не отправлять backend. Не о
 
 ## 6. Миграции и конфигурация
 
-Актуальные migrations: `0005_web_sessions`, `0006_content_classification`, `0007_browser_extension`.
+Актуальные migrations: `0005_web_sessions`, `0006_content_classification`, `0007_browser_extension`, `0008_hybrid_recommendations`.
 
 Создаёт:
 
@@ -151,6 +152,9 @@ Cookies и passwords площадок не отправлять backend. Не о
 - `web_sessions`.
 - `extension_link_tickets`, `extension_installations`;
 - `application_commands`, `extension_diagnostics`.
+- `opportunities.facts`, `facts_version` и explainable matching-поля `user_opportunities`.
+
+Полный pipeline и границы глобального/персонального анализа описаны в `docs/RECOMMENDATION_ARCHITECTURE.md`.
 
 Контейнер backend запускает `alembic upgrade head` перед Uvicorn. Перед production deployment всё равно сделать backup PostgreSQL и проверить migration log.
 

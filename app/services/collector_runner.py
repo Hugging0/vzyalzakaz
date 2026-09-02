@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from app.collectors import create_collector
 from app.config import SourceConfig
 from app.models import CollectorRun, OpportunityStatus
+from app.services.content_classifier import is_demand_category
 from app.services.pipeline import OpportunityPipeline
 
 logger = logging.getLogger(__name__)
@@ -57,9 +58,13 @@ class CollectorRunner:
                         semantic_fallback_count += int(result.classification.fallback_used)
                         semantic_fallback_failures += int(result.classification.fallback_failed)
                     opportunity = result.opportunity
-                    if result.created and opportunity.status != OpportunityStatus.FILTERED and self.notifier:
+                    if (
+                        (result.created or result.updated)
+                        and opportunity.status != OpportunityStatus.FILTERED
+                        and is_demand_category(opportunity.content_category)
+                        and self.notifier
+                    ):
                         await self.notifier.notify(opportunity)
-                        opportunity.notified_at = datetime.now(UTC)
                 run = await session.get(CollectorRun, run_id)
                 run.fetched = len(items)
                 run.created = created

@@ -15,6 +15,8 @@ from app.services.content_classifier import (
     ContentClassifier,
     apply_classification_metadata,
 )
+from app.services.opportunity_facts import FACTS_VERSION, OpportunityFactExtractor
+from app.services.pipeline import universal_rejection
 
 
 async def reclassify_legacy_rows(
@@ -23,11 +25,12 @@ async def reclassify_legacy_rows(
     include_semantic: bool = False,
     limit: int | None = None,
 ) -> Counter[str]:
-    """Classify rows created before the intent stage; uncertain rows remain fail-closed."""
+    """Classify legacy rows and persist neutral facts under the current global policy."""
     classifier_settings = settings
     if not include_semantic:
         classifier_settings = settings.model_copy(update={"intent_classifier_enabled": False})
     classifier = ContentClassifier(classifier_settings)
+    fact_extractor = OpportunityFactExtractor(classifier_settings)
     source_policies = {source.name: source.content_policy for source in settings.load_sources()}
     engine = make_engine(settings.database_url)
     counts: Counter[str] = Counter()
@@ -56,10 +59,19 @@ async def reclassify_legacy_rows(
                 )
                 classification = await classifier.classify(raw)
                 apply_classification_metadata(opportunity, classification)
+                facts = await fact_extractor.extract(
+                    raw,
+                    classification,
+                    allow_llm=include_semantic,
+                )
+                opportunity.facts = facts.model_dump(mode="json")
+                opportunity.facts_version = FACTS_VERSION
                 counts[classification.category.value] += 1
                 counts["semantic_fallback"] += int(classification.fallback_used)
                 counts["semantic_failure"] += int(classification.fallback_failed)
-                if not classification.demand_side:
+                rejection = universal_rejection(raw, classification)
+                opportunity.skip_reason = rejection
+                if rejection:
                     opportunity.status = OpportunityStatus.FILTERED
                     await session.execute(
                         update(UserOpportunity)
@@ -69,6 +81,8 @@ async def reclassify_legacy_rows(
                         )
                         .values(status=OpportunityStatus.FILTERED)
                     )
+                elif opportunity.status == OpportunityStatus.FILTERED:
+                    opportunity.status = OpportunityStatus.NEW
             await session.commit()
     finally:
         await engine.dispose()

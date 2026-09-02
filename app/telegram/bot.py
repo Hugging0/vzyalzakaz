@@ -889,23 +889,40 @@ def _format_card(opportunity: Opportunity, match: UserOpportunity) -> str:
         high = f"{opportunity.budget_max:,.0f}" if opportunity.budget_max else "?"
         budget = f"{low}-{high} {opportunity.currency or ''}".strip()
     analysis = match.analysis or {}
+    strength = str(analysis.get("strength_label") or "Совпадение")
+    why = analysis.get("why_recommended") or []
+    reason = why[0].get("text") if why and isinstance(why[0], dict) else None
     return (
-        f"<b>Сильный заказ, {match.final_score:.0f}% совпадение</b>\n"
+        f"<b>{html.escape(strength)} · {match.final_score:.0f}/100</b>\n"
         f"{html.escape(opportunity.title[:140])}\n"
         f"{html.escape(opportunity.source)} · {html.escape(budget)}\n\n"
-        f"{html.escape(str(analysis.get('fit_reason') or 'Нужна ручная проверка'))}"
+        f"{html.escape(str(reason or 'Откройте заказ, чтобы увидеть разбор совпадения.'))}"
     )
 
 
 def _format_details(opportunity: Opportunity, match: UserOpportunity) -> str:
     analysis = match.analysis or {}
-    required = ", ".join(analysis.get("required_skills") or []) or "не определены"
-    missing = ", ".join(analysis.get("missing_skills") or []) or "не определены"
-    summary = str(analysis.get("summary") or opportunity.description[:1200])
+    matched = ", ".join(analysis.get("matched_capabilities") or []) or "нет прямых совпадений"
+    missing = ", ".join(analysis.get("missing_must_haves") or []) or "не обнаружены"
+    why = [
+        item.get("text")
+        for item in analysis.get("why_recommended", [])
+        if isinstance(item, dict) and item.get("text")
+    ]
+    checks = [
+        item.get("text")
+        for item in analysis.get("checks", [])
+        if isinstance(item, dict) and item.get("text")
+    ]
+    why_text = "\n".join(f"{index}. {html.escape(text)}" for index, text in enumerate(why, 1))
+    checks_text = "\n".join(f"• {html.escape(text)}" for text in checks)
     return (
         f"<b>{html.escape(opportunity.title)}</b>\n\n"
-        f"{html.escape(summary[:1600])}\n\n"
-        f"<b>Нужные навыки:</b> {html.escape(required)}\n"
-        f"<b>Пробелы:</b> {html.escape(missing)}\n"
-        f"<b>Portfolio:</b> {html.escape(match.portfolio_item or 'не выбран')}"
+        f"<b>{html.escape(str(analysis.get('strength_label') or 'Совпадение'))} · "
+        f"{match.final_score:.0f}/100</b>\n\n"
+        f"<b>Почему рекомендуем</b>\n{why_text or 'Нужна ручная проверка'}\n\n"
+        f"<b>Навыки:</b> {html.escape(matched)}\n"
+        f"<b>Что не подтверждено:</b> {html.escape(missing)}\n"
+        f"<b>Кейс:</b> {html.escape(match.portfolio_item or 'не выбран')}"
+        + (f"\n\n<b>Что проверить</b>\n{checks_text}" if checks_text else "")
     )

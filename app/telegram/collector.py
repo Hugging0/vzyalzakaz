@@ -12,6 +12,7 @@ from telethon.tl.custom.message import Message
 from app.config import AppSettings, SourceConfig
 from app.models import OpportunityStatus
 from app.schemas import RawOpportunity
+from app.services.content_classifier import is_demand_category
 from app.services.pipeline import OpportunityPipeline
 from app.telegram.client import create_user_client
 
@@ -130,10 +131,13 @@ class TelegramCollector:
         async with self.session_factory() as session:
             result = await self.pipeline.process(session, raw)
             opportunity = result.opportunity
-            if result.created and opportunity.status != OpportunityStatus.FILTERED and self.notifier:
+            if (
+                (result.created or result.updated)
+                and opportunity.status != OpportunityStatus.FILTERED
+                and is_demand_category(opportunity.content_category)
+                and self.notifier
+            ):
                 await self.notifier.notify(opportunity)
-                opportunity.notified_at = message.date
-                await session.commit()
 
 
 def _title(text: str) -> str:

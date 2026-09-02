@@ -10,7 +10,7 @@ from app.reclassify_content import reclassify_legacy_rows
 
 
 @pytest.mark.asyncio
-async def test_legacy_unknown_candidate_is_reclassified_fail_closed(
+async def test_legacy_supply_post_is_reclassified_as_global_reject(
     settings,
     profile,
     tmp_path,

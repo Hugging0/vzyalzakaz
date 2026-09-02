@@ -256,7 +256,7 @@ HH.ru adapter включён в код, но в стартовом конфиг�
 Основные маршруты:
 
 - `GET /api/health`;
-- `GET /api/opportunities?status=recommended&minimum_score=70`;
+- `GET /api/opportunities?status=new` — глобальные нейтральные opportunities без персонального score;
 - `GET /api/opportunities/{id}`;
 - `PATCH /api/opportunities/{id}/status`;
 - `GET /api/analytics`;

@@ -43,7 +43,7 @@ export function WorkspaceShell({ profile, children }: { profile: Profile; childr
           {navigation.map(({ href, label, Icon }) => <Link key={href} href={href} data-active={isActive(pathname, href)}><Icon size={20} /><span>{label}</span></Link>)}
         </nav>
         <div className="sidebar-footer">
-          <div className="agent-compact"><BellRing size={18} /><span><strong>{profile.isActive ? "Агент работает" : "Агент на паузе"}</strong><small>{profile.matchThreshold}% для уведомлений</small></span></div>
+          <div className="agent-compact"><BellRing size={18} /><span><strong>{profile.isActive ? "Агент работает" : "Агент на паузе"}</strong><small>от {profile.matchThreshold}/100</small></span></div>
           <button className="nav-action" type="button" onClick={() => void logout()}><LogOut size={18} /><span>Выйти</span></button>
         </div>
       </aside>

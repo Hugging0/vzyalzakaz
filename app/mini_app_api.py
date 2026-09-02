@@ -159,6 +159,8 @@ def _lead_payload(match: UserOpportunity, opportunity: Opportunity) -> dict:
         budget = f"{low}–{high} {opportunity.currency or ''}".strip()
     else:
         budget = "Бюджет не указан"
+    analysis = match.analysis or {}
+    explanation = match.explanation or {}
     return {
         "id": match.id,
         "opportunity_id": str(opportunity.id),
@@ -168,7 +170,18 @@ def _lead_payload(match: UserOpportunity, opportunity: Opportunity) -> dict:
         "source_url": opportunity.source_url,
         "budget_label": budget,
         "final_score": match.final_score,
-        "analysis": match.analysis or {},
+        "analysis": analysis,
+        "facts": opportunity.facts or {},
+        "strength_label": analysis.get("strength_label") or explanation.get("strength_label"),
+        "match_confidence": match.match_confidence,
+        "feature_vector": match.feature_vector or {},
+        "dimensions": analysis.get("dimensions") or explanation.get("dimensions") or {},
+        "why_recommended": (
+            analysis.get("why_recommended") or explanation.get("why_recommended") or []
+        ),
+        "checks": analysis.get("checks") or explanation.get("checks") or [],
+        "ranking_version": match.ranking_version,
+        "reranked": match.reranked,
         "portfolio_item": match.portfolio_item,
         "proposal": match.proposal,
         "status": match.status.value,

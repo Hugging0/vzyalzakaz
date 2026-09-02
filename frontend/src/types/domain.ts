@@ -1,5 +1,18 @@
 export type LeadStatus = "recommended" | "approved" | "contacted" | "replied" | "interview" | "won" | "lost" | "skipped";
 
+export interface MatchEvidence {
+  text: string;
+  sourceFacts: string[];
+  profileFacts: string[];
+}
+
+export interface MatchDimension {
+  score: number;
+  label: string;
+  sourceFacts: string[];
+  profileFacts: string[];
+}
+
 export interface Lead {
   id: number;
   opportunityId: string;
@@ -9,6 +22,13 @@ export interface Lead {
   sourceUrl: string | null;
   budgetLabel: string;
   matchScore: number;
+  strengthLabel: string;
+  matchConfidence: number;
+  dimensions: Record<string, MatchDimension>;
+  recommendationReasons: MatchEvidence[];
+  checks: MatchEvidence[];
+  rankingVersion: string;
+  reranked: boolean;
   fitReasons: string[];
   requiredSkills: string[];
   risks: string[];

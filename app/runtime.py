@@ -23,7 +23,7 @@ class Runtime:
         self.profile = settings.load_profile()
         self.sources = [source for source in settings.load_sources() if source.enabled]
         self.portfolio = settings.load_portfolio()
-        self.pipeline = OpportunityPipeline(settings, self.profile, self.portfolio)
+        self.pipeline = OpportunityPipeline(settings)
         self.recommendations = RecommendationService(settings, self.profile, self.portfolio)
         self.telegram_bot: TelegramBot | None = None
         self.telegram_collector: TelegramCollector | None = None

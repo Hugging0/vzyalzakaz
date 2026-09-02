@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models import OpportunityStatus
 
@@ -54,6 +54,74 @@ class LLMAnalysis(BaseModel):
     win_score: float = Field(ge=0, le=100)
 
 
+class OpportunityFacts(BaseModel):
+    """Candidate-independent facts extracted once from a global opportunity."""
+
+    title: str = ""
+    work_type: str = "unknown"
+    category: str = "unknown"
+    skills: list[str] = Field(default_factory=list)
+    technologies: list[str] = Field(default_factory=list)
+    seniority: str | None = None
+    deliverables: list[str] = Field(default_factory=list)
+    budget_raw: str | None = None
+    budget_min: float | None = None
+    budget_max: float | None = None
+    currency: str | None = None
+    duration: str | None = None
+    estimated_effort_min_hours: float | None = None
+    estimated_effort_max_hours: float | None = None
+    remote: bool | None = None
+    time_zone_constraints: list[str] = Field(default_factory=list)
+    meeting_constraints: list[str] = Field(default_factory=list)
+    languages: list[str] = Field(default_factory=list)
+    client_facts: list[str] = Field(default_factory=list)
+    competition_facts: list[str] = Field(default_factory=list)
+    deadline: str | None = None
+    contacts: list[str] = Field(default_factory=list)
+    risk_flags: list[str] = Field(default_factory=list)
+    source_confidence: float = Field(default=0, ge=0, le=1)
+    evidence: dict[str, list[str]] = Field(default_factory=dict)
+
+
+class MatchEvidence(BaseModel):
+    text: str = Field(min_length=1, max_length=300)
+    source_facts: list[str] = Field(default_factory=list)
+    profile_facts: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def has_provenance(self) -> MatchEvidence:
+        if not self.source_facts and not self.profile_facts:
+            raise ValueError("match explanation must reference a source or profile fact")
+        return self
+
+
+class MatchDimension(BaseModel):
+    score: float = Field(ge=0, le=100)
+    label: str
+    source_facts: list[str] = Field(default_factory=list)
+    profile_facts: list[str] = Field(default_factory=list)
+
+
+class UserMatchAnalysis(BaseModel):
+    """Explainable candidate-specific assessment derived from OpportunityFacts."""
+
+    matched_capabilities: list[str] = Field(default_factory=list)
+    missing_must_haves: list[str] = Field(default_factory=list)
+    transferable_capabilities: list[str] = Field(default_factory=list)
+    portfolio_evidence: list[str] = Field(default_factory=list)
+    dimensions: dict[str, MatchDimension] = Field(default_factory=dict)
+    risks: list[str] = Field(default_factory=list)
+    confidence: float = Field(ge=0, le=1)
+    rank_score: float = Field(ge=0, le=100)
+    strength_label: str
+    why_recommended: list[MatchEvidence] = Field(default_factory=list)
+    checks: list[MatchEvidence] = Field(default_factory=list)
+    feature_vector: dict[str, float] = Field(default_factory=dict)
+    reranked: bool = False
+    ranking_version: str = "hybrid-v1"
+
+
 class ProfileIntake(BaseModel):
     """Structured facts extracted from a free-form profile introduction."""
 
@@ -81,17 +149,10 @@ class OpportunityRead(BaseModel):
     employment_type: str | None
     published_at: datetime | None
     collected_at: datetime
-    fit_score: float | None
-    money_score: float | None
-    win_score: float | None
-    freshness_score: float | None
-    final_score: float | None
-    estimated_effort_hours: float | None
-    estimated_effective_hourly_rate: float | None
-    analysis: dict
-    proposal: str | None
-    portfolio_item: str | None
+    facts: dict
+    facts_version: str | None
     status: OpportunityStatus
+    skip_reason: str | None
     apply_mode: str
 
 
