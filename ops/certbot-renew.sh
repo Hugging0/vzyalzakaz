@@ -5,7 +5,7 @@ docker run --rm \
   -v /etc/letsencrypt:/etc/letsencrypt \
   -v huntagent_certbot_www:/var/www/certbot \
   certbot/certbot:latest \
-  renew --cert-name vzyalzakaz.ru --quiet
+  renew --cert-name vzyalzakaz.ru --quiet --no-random-sleep-on-renew
 
 cd /opt/hunt-agent
 docker compose \
