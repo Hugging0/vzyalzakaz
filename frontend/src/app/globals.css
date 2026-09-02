@@ -190,6 +190,9 @@ h1, h2, h3 { text-wrap: balance; }
 .segmented-control button[data-active="true"] { background: var(--yellow); }
 .connection-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 25rem), 1fr)); gap: .875rem; }
 .extension-connect-card { display: grid; grid-template-columns: 3rem minmax(0, 1fr); gap: .875rem; margin-bottom: 1rem; }
+.extension-install-steps { margin: .875rem 0 0; padding-left: 1.375rem; color: var(--ink-secondary); font-size: .875rem; }
+.extension-install-steps li + li { margin-top: .375rem; }
+.extension-install-steps code { border: 1px solid var(--border); border-radius: .25rem; padding: .0625rem .25rem; background: var(--surface); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .875rem; }
 .extension-code { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: .625rem; margin-top: .875rem; }
 .extension-code code { min-height: 3rem; display: flex; align-items: center; overflow: auto; border: 2px solid var(--border); border-radius: var(--radius-control); padding: .625rem .75rem; background: var(--surface); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .875rem; }
 .extension-code .app-button { min-width: 9.75rem; }

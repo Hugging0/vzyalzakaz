@@ -9,4 +9,7 @@ __pycache__
 .ruff_cache
 data
 tests
-
+**/node_modules
+frontend/.next
+extension/.output
+extension/.wxt

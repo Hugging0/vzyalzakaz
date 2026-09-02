@@ -96,9 +96,10 @@ export async function sendDiagnostic(
   });
 }
 
-function detectBrowser(): "chrome" | "edge" | "brave" | "chromium" {
+function detectBrowser(): "chrome" | "edge" | "brave" | "yandex" | "chromium" {
   const ua = navigator.userAgent;
   if (ua.includes("Edg/")) return "edge";
+  if (ua.includes("YaBrowser/")) return "yandex";
   if ((navigator as Navigator & { brave?: unknown }).brave) return "brave";
   if (ua.includes("Chrome/")) return "chrome";
   return "chromium";

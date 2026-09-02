@@ -1,12 +1,13 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, Clock3, Copy, PlugZap, Puzzle, Unplug } from "lucide-react";
+import { AlertTriangle, Check, Clock3, Copy, Download, PlugZap, Puzzle, Unplug } from "lucide-react";
 import { useState } from "react";
 
 import { AppBadge } from "@/components/ui/AppBadge";
 import { AppButton } from "@/components/ui/AppButton";
 import { AppCard } from "@/components/ui/AppCard";
+import { AppLinkButton } from "@/components/ui/AppLinkButton";
 import { AppNotice } from "@/components/ui/AppNotice";
 import { AppPageHeader } from "@/components/ui/AppPageHeader";
 import { AppSegmentedControl } from "@/components/ui/AppSegmentedControl";
@@ -121,9 +122,17 @@ function ExtensionConnectionCard({
         <p>Заполняет форму на Freelancer, Freelance.ru, FL.ru и Kwork. Отправляете вы.</p>
         {online && activeSourceId && <p className="muted small">Текущая площадка: {activeSourceId.replaceAll("_", ".")}.</p>}
         {marketplaceAuthState === "AUTH_REQUIRED" && <AppNotice tone="warning">На текущей площадке нужно войти в аккаунт.</AppNotice>}
+        {!online && (
+          <ol className="extension-install-steps">
+            <li>Скачайте и распакуйте архив.</li>
+            <li>Откройте страницу расширений браузера, включите режим разработчика и загрузите распакованную папку.</li>
+            <li>Получите код ниже и вставьте его в расширение.</li>
+          </ol>
+        )}
         {linkCode && <div className="extension-code"><code>{linkCode}</code><AppButton variant="ghost" onClick={onCopy}><Copy size={18} /> {copied ? "Скопировано" : "Копировать"}</AppButton></div>}
         <div className="inline-actions">
-          {!online && <AppButton disabled={busy} onClick={onConnect}>{busy ? "Создаём код…" : linkCode ? "Новый код" : "Подключить"}</AppButton>}
+          {!online && <AppLinkButton href="/downloads/vzyalzakaz-extension-chromium.zip" download prefetch={false}><Download size={18} /> Chrome / Яндекс</AppLinkButton>}
+          {!online && <AppButton variant="secondary" disabled={busy} onClick={onConnect}>{busy ? "Создаём код…" : linkCode ? "Новый код" : "Получить код"}</AppButton>}
           {installationId && <AppButton variant="danger" disabled={busy} onClick={() => onDisconnect(installationId)}><Unplug size={18} /> Отключить</AppButton>}
         </div>
         {linkCode && <AppNotice tone="warning">Код действует 5 минут и используется один раз. Вставьте его во всплывающее окно расширения.</AppNotice>}

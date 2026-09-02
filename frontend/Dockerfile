@@ -1,9 +1,18 @@
+FROM node:25-alpine AS extension-build
+
+WORKDIR /extension
+COPY extension/package.json extension/package-lock.json ./
+RUN npm ci
+COPY extension/ ./
+RUN npm run zip && cp .output/*-chrome.zip /tmp/vzyalzakaz-extension-chromium.zip
+
 FROM node:25-alpine AS build
 
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
-COPY . .
+COPY frontend/ ./
+COPY --from=extension-build /tmp/vzyalzakaz-extension-chromium.zip ./public/downloads/vzyalzakaz-extension-chromium.zip
 
 ARG NEXT_PUBLIC_ALLOW_DEV_AUTH=false
 ARG NEXT_PUBLIC_EXTENSION_ID=

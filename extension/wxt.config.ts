@@ -18,7 +18,7 @@ export default defineConfig({
     short_name: "ВзялЗаказ",
     description: "Подготавливает отклик на площадке и оставляет отправку под вашим контролем.",
     minimum_chrome_version: "120",
-    permissions: ["alarms", "storage", "tabs"],
+    permissions: ["alarms", "storage"],
     host_permissions: ["https://vzyalzakaz.ru/*", ...marketplaceHosts],
     externally_connectable: {
       matches: ["https://vzyalzakaz.ru/*", "http://localhost/*", "http://127.0.0.1/*"],

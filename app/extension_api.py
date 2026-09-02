@@ -77,7 +77,7 @@ class LinkExchange(BaseModel):
         max_length=64,
         pattern=r"^[a-zA-Z0-9_-]+$",
     )
-    browser: Literal["chrome", "edge", "brave", "chromium", "firefox"] = "chromium"
+    browser: Literal["chrome", "edge", "brave", "yandex", "chromium", "firefox"] = "chromium"
     version: str = Field(min_length=1, max_length=30, pattern=r"^[0-9A-Za-z.+-]+$")
 
 
