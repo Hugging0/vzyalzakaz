@@ -85,7 +85,11 @@ async def rebuild_recommendations(
                 )
             ).all()
             for user in users:
-                matches = await service.backfill_user(session, user)
+                matches = await service.backfill_user(
+                    session,
+                    user,
+                    limit=len(opportunities),
+                )
                 counts["users"] += 1
                 counts["matches"] += len(matches)
     finally:
