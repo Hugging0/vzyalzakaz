@@ -54,6 +54,23 @@ async def rebuild_recommendations(
                 opportunity.skip_reason = rejection
                 _clear_global_personalization(opportunity)
                 counts["facts"] += 1
+            historical = (
+                await session.execute(
+                    select(UserOpportunity, TelegramUser, Opportunity)
+                    .join(TelegramUser, TelegramUser.id == UserOpportunity.user_id)
+                    .join(Opportunity, Opportunity.id == UserOpportunity.opportunity_id)
+                    .where(UserOpportunity.status != OpportunityStatus.RECOMMENDED)
+                )
+            ).all()
+            for match, user, opportunity in historical:
+                await service.refresh_existing_match(
+                    session,
+                    user,
+                    match,
+                    opportunity,
+                    allow_llm_rerank=False,
+                )
+                counts["historical_matches_refreshed"] += 1
             removed = await session.execute(
                 delete(UserOpportunity).where(
                     UserOpportunity.status == OpportunityStatus.RECOMMENDED

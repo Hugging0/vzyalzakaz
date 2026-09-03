@@ -260,6 +260,29 @@ class RecommendationService:
         )
         await session.commit()
 
+    async def refresh_existing_match(
+        self,
+        session: AsyncSession,
+        user: TelegramUser,
+        match: UserOpportunity,
+        opportunity: Opportunity,
+        *,
+        allow_llm_rerank: bool = False,
+    ) -> UserOpportunity:
+        """Recalculate ranking metadata without changing workflow status or proposal."""
+        profile = self.profile_for(user)
+        portfolio = self.portfolio_for(user)
+        facts = await self._facts_for(session, opportunity)
+        analysis = await self.matcher.analyze(
+            opportunity,
+            facts,
+            profile,
+            portfolio,
+            allow_llm_rerank=allow_llm_rerank,
+        )
+        self._apply_analysis(match, opportunity, facts, analysis, portfolio)
+        return match
+
     async def generate_proposal(
         self,
         session: AsyncSession,

@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.database import make_engine
-from app.models import Base, TelegramUser, UserOpportunity
+from app.models import Base, OpportunityStatus, TelegramUser, UserOpportunity
 from app.schemas import RawOpportunity
 from app.services.pipeline import OpportunityPipeline
 from app.services.recommendations import RecommendationService, personalized_match_score
@@ -80,6 +80,10 @@ async def test_personal_matches_do_not_leak_between_users(settings, profile):
 
         python_match = await service.ensure_match(session, python_user, opportunity)
         other_match = await service.ensure_match(session, other_user, opportunity)
+        python_match.status = OpportunityStatus.APPROVED
+        python_match.proposal = "Сохранённый отклик"
+        await service.refresh_existing_match(session, python_user, python_match, opportunity)
+        await session.commit()
         stored = (await session.scalars(select(UserOpportunity))).all()
 
     assert python_match is not None
@@ -90,4 +94,6 @@ async def test_personal_matches_do_not_leak_between_users(settings, profile):
     assert opportunity.analysis == {}
     assert python_match.analysis["why_recommended"][0]["source_facts"]
     assert python_match.analysis["why_recommended"][0]["profile_facts"]
+    assert python_match.status == OpportunityStatus.APPROVED
+    assert python_match.proposal == "Сохранённый отклик"
     await engine.dispose()
