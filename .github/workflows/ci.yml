@@ -40,7 +40,12 @@ jobs:
       - run: npm run build
 
   extension:
-    runs-on: ubuntu-latest
+    name: extension (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: extension
