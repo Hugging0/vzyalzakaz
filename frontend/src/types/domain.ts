@@ -21,6 +21,14 @@ export interface Lead {
   source: string;
   sourceUrl: string | null;
   budgetLabel: string;
+  economics: {
+    normalizedLabel: string | null;
+    fxStatus: string;
+    fxRate: number | null;
+    fxRateDate: string | null;
+    fxRateSource: string | null;
+    requiresCheck: boolean;
+  };
   matchScore: number;
   strengthLabel: string;
   matchConfidence: number;
@@ -29,6 +37,7 @@ export interface Lead {
   checks: MatchEvidence[];
   rankingVersion: string;
   reranked: boolean;
+  retrieval: { method: string; score: number; fallbackUsed: boolean };
   fitReasons: string[];
   requiredSkills: string[];
   risks: string[];

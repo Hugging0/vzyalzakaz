@@ -4,7 +4,7 @@ import argparse
 import asyncio
 from collections import Counter
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.config import AppSettings, get_settings
@@ -27,8 +27,9 @@ async def rebuild_recommendations(
     settings: AppSettings,
     *,
     include_fact_llm: bool = False,
+    batch_size: int = 200,
 ) -> Counter[str]:
-    """Backfill neutral facts, then rebuild only pending per-user recommendations."""
+    """Idempotently backfill neutral facts, then rebuild only pending recommendations."""
     engine = make_engine(settings.database_url)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     extractor = OpportunityFactExtractor(settings)
@@ -36,24 +37,47 @@ async def rebuild_recommendations(
     counts: Counter[str] = Counter()
     try:
         async with session_factory() as session:
-            opportunities = (await session.scalars(select(Opportunity))).all()
-            for opportunity in opportunities:
-                raw = _to_raw(opportunity)
-                classification = _classification(opportunity)
-                facts = await extractor.extract(
-                    raw,
-                    classification,
-                    allow_llm=include_fact_llm,
+            failed_ids: set = set()
+            while True:
+                query = (
+                    select(Opportunity)
+                    .where(
+                        or_(
+                            Opportunity.facts_version.is_(None),
+                            Opportunity.facts_version != FACTS_VERSION,
+                        ),
+                        Opportunity.id.not_in(failed_ids) if failed_ids else True,
+                    )
+                    .order_by(Opportunity.id)
+                    .limit(batch_size)
                 )
-                opportunity.facts = facts.model_dump(mode="json")
-                opportunity.facts_version = FACTS_VERSION
-                rejection = universal_rejection(raw, classification)
-                opportunity.status = (
-                    OpportunityStatus.FILTERED if rejection else OpportunityStatus.NEW
-                )
-                opportunity.skip_reason = rejection
-                _clear_global_personalization(opportunity)
-                counts["facts"] += 1
+                batch = (await session.scalars(query)).all()
+                if not batch:
+                    break
+                for opportunity in batch:
+                    try:
+                        async with session.begin_nested():
+                            raw = _to_raw(opportunity)
+                            classification = _classification(opportunity)
+                            facts = await extractor.extract(
+                                raw,
+                                classification,
+                                allow_llm=include_fact_llm,
+                            )
+                            opportunity.facts = facts.model_dump(mode="json")
+                            opportunity.facts_version = FACTS_VERSION
+                            rejection = universal_rejection(raw, classification)
+                            opportunity.status = (
+                                OpportunityStatus.FILTERED if rejection else OpportunityStatus.NEW
+                            )
+                            opportunity.skip_reason = rejection
+                            counts["facts"] += 1
+                    except Exception:
+                        failed_ids.add(opportunity.id)
+                        counts["fact_failures"] += 1
+                await session.commit()
+                counts["fact_batches"] += 1
+            opportunities_count = len((await session.scalars(select(Opportunity.id))).all())
             historical = (
                 await session.execute(
                     select(UserOpportunity, TelegramUser, Opportunity)
@@ -88,12 +112,13 @@ async def rebuild_recommendations(
                 matches = await service.backfill_user(
                     session,
                     user,
-                    limit=len(opportunities),
+                    full_corpus=True,
                 )
                 counts["users"] += 1
                 counts["matches"] += len(matches)
     finally:
         await engine.dispose()
+    counts["opportunities_scanned"] = opportunities_count
     return counts
 
 
@@ -108,21 +133,6 @@ def _classification(opportunity: Opportunity) -> ContentClassification:
         latency_ms=opportunity.classification_latency_ms or 0,
         version=opportunity.classification_version or "intent-v1",
     )
-
-
-def _clear_global_personalization(opportunity: Opportunity) -> None:
-    opportunity.prefilter_score = None
-    opportunity.prefilter_reasons = []
-    opportunity.fit_score = None
-    opportunity.money_score = None
-    opportunity.win_score = None
-    opportunity.freshness_score = None
-    opportunity.final_score = None
-    opportunity.estimated_effort_hours = None
-    opportunity.estimated_effective_hourly_rate = None
-    opportunity.analysis = {}
-    opportunity.proposal = None
-    opportunity.portfolio_item = None
 
 
 def _to_raw(opportunity: Opportunity) -> RawOpportunity:
@@ -161,9 +171,14 @@ def main() -> None:
         action="store_true",
         help="Use the configured LLM for neutral fact extraction",
     )
+    parser.add_argument("--batch-size", type=int, default=200)
     args = parser.parse_args()
     counts = asyncio.run(
-        rebuild_recommendations(get_settings(), include_fact_llm=args.llm_facts)
+        rebuild_recommendations(
+            get_settings(),
+            include_fact_llm=args.llm_facts,
+            batch_size=max(1, args.batch_size),
+        )
     )
     print(" ".join(f"{key}={value}" for key, value in sorted(counts.items())))
 

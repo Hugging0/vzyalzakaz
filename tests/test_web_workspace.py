@@ -78,12 +78,6 @@ async def test_application_workflow_rejects_skipped_steps(settings, profile):
         match = UserOpportunity(
             user_id=user.id,
             opportunity_id=opportunity.id,
-            prefilter_score=90,
-            fit_score=90,
-            money_score=80,
-            win_score=70,
-            freshness_score=100,
-            final_score=88,
             status=OpportunityStatus.RECOMMENDED,
         )
         session.add(match)

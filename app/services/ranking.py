@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from app.config import Ranking
-
 
 def freshness_score(published_at: datetime | None, now: datetime | None = None) -> float:
     if published_at is None:
@@ -25,15 +23,3 @@ def freshness_score(published_at: datetime | None, now: datetime | None = None) 
     if minutes <= 4320:
         return 20
     return 0
-
-
-def final_score(fit: float, money: float, win: float, freshness: float, config: Ranking) -> float:
-    weights = [config.fit_weight, config.money_weight, config.win_weight, config.freshness_weight]
-    denominator = sum(weights) or 1
-    result = (
-        fit * config.fit_weight
-        + money * config.money_weight
-        + win * config.win_weight
-        + freshness * config.freshness_weight
-    ) / denominator
-    return round(max(0.0, min(100.0, result)), 2)

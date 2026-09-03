@@ -1,7 +1,7 @@
 # Personal AI JobHunter
 
-Self-hosted агент, который собирает вакансии и проектные задачи, отбрасывает шум,
-оценивает FIT / MONEY / WIN, присылает лучшие варианты в Telegram и готовит
+Self-hosted агент, который собирает вакансии и проектные задачи, отделяет общий corpus от
+персонального подбора, объясняет rank `/100`, присылает лучшие варианты в Telegram и готовит
 персональный отклик только после ручного подтверждения.
 
 Сервис поддерживает несколько пользователей. Responsive Web/PWA — основной кабинет,
@@ -15,9 +15,10 @@ Telegram-бот отвечает за срочные уведомления, б�
   статусом и режимом подключения;
 - PostgreSQL + SQLAlchemy 2 + Alembic;
 - exact- и content-дедупликация с сохранением всех источников репоста;
-- быстрый rule-based prefilter на русском, английском и фарси;
-- structured LLM-анализ через DeepSeek или OpenRouter с безопасным локальным fallback;
-- FIT / MONEY / WIN / freshness и настраиваемый итоговый рейтинг;
+- candidate-neutral classify/extract на русском, английском и фарси;
+- structured LLM extraction и bounded rerank через DeepSeek или OpenRouter;
+- cached semantic top-K retrieval с детерминированным outage fallback;
+- объяснимый rank по навыкам, деньгам, кейсам, формату, срокам и качеству клиента;
 - Telegram-карточки с цветными inline-кнопками, быстрым черновиком, отказом и deep links;
 - подбор portfolio-case и генерация персонального proposal;
 - отдельные данные и статусы для каждого Telegram user id;
@@ -152,7 +153,7 @@ MAX_USERS=100
 кроме `TELEGRAM_OWNER_ID`. Existing users продолжают работать при смене режима.
 
 У каждого пользователя собственные JSON-профиль и portfolio, а также отдельные
-FIT/MONEY/WIN, статусы, причины Skip и proposal. Callback всегда проверяется против
+rank `/100`, измерения, объяснения, статусы, причины Skip и proposal. Callback всегда проверяется против
 Telegram user id, поэтому доступ к чужой рекомендации по подменённому ID запрещён.
 
 ## LLM
@@ -176,6 +177,24 @@ LLM_MODEL=deepseek/deepseek-chat
 `LLM_BASE_URL` обычно оставляют пустым. Ответ модели валидируется строгой Pydantic
 схемой. При timeout, невалидном JSON или ошибке API конкретная вакансия получает
 локальную оценку, а pipeline продолжает работу.
+
+## Semantic retrieval и валюты
+
+Primary retrieval подключается к любому OpenAI-compatible `POST /embeddings`:
+
+```dotenv
+EMBEDDING_PROVIDER=openai_compatible
+EMBEDDING_API_KEY=...
+EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_BASE_URL=https://api.openai.com/v1
+MATCHING_RETRIEVAL_TOP_K=100
+```
+
+Vectors валидируются и кэшируются; при недоступности API включается детерминированный
+lexical fallback. Бюджеты USD/EUR и других валют нормализуются через официальный daily
+XML Банка России (`FX_PROVIDER=cbr`). Исходная сумма не заменяется. Неизвестный курс не
+фильтрует заказ, а помечает деньги как требующие проверки. Полный контракт описан в
+`docs/RECOMMENDATION_ARCHITECTURE.md`.
 
 ## Источники для digital-специалистов
 

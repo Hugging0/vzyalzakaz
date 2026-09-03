@@ -6,9 +6,11 @@ type DimensionDto = { score?: number; label?: string; source_facts?: string[]; p
 type LeadDto = {
   id: number; opportunity_id: string; title: string; description: string; source: string; source_url: string | null;
   budget_label: string; final_score: number;
+  economics?: { normalized_label?: string | null; fx_status?: string; fx_rate?: number | null; fx_rate_date?: string | null; fx_rate_source?: string | null; requires_check?: boolean };
   analysis: { fit_reason?: string; required_skills?: string[]; risks?: string[]; matched_capabilities?: string[] };
   strength_label?: string; match_confidence?: number; dimensions?: Record<string, DimensionDto>;
   why_recommended?: EvidenceDto[]; checks?: EvidenceDto[]; ranking_version?: string; reranked?: boolean;
+  retrieval?: { method?: string; score?: number; fallback_used?: boolean };
   portfolio_item: string | null; proposal: string | null; status: LeadStatus; published_at: string | null;
   created_at: string; contacted_at: string | null; apply_mode: Lead["applyMode"];
 };
@@ -29,9 +31,23 @@ export function mapLeadDtoToLead(dto: LeadDto): Lead {
   return {
     id: dto.id, opportunityId: dto.opportunity_id, title: dto.title, description: dto.description,
     source: dto.source, sourceUrl: dto.source_url, budgetLabel: dto.budget_label, matchScore: Math.round(dto.final_score),
+    economics: {
+      normalizedLabel: dto.economics?.normalized_label ?? null,
+      fxStatus: dto.economics?.fx_status ?? "missing",
+      fxRate: dto.economics?.fx_rate ?? null,
+      fxRateDate: dto.economics?.fx_rate_date ?? null,
+      fxRateSource: dto.economics?.fx_rate_source ?? null,
+      requiresCheck: dto.economics?.requires_check ?? false,
+    },
     strengthLabel: dto.strength_label || "Стоит проверить", matchConfidence: dto.match_confidence ?? 0,
     dimensions, recommendationReasons, checks, rankingVersion: dto.ranking_version || "legacy",
-    reranked: dto.reranked ?? false, fitReasons,
+    reranked: dto.reranked ?? false,
+    retrieval: {
+      method: dto.retrieval?.method ?? "lexical_fallback",
+      score: Math.round(dto.retrieval?.score ?? 0),
+      fallbackUsed: dto.retrieval?.fallback_used ?? true,
+    },
+    fitReasons,
     requiredSkills: dto.analysis.matched_capabilities ?? dto.analysis.required_skills ?? [],
     risks: checks.map((item) => item.text).length ? checks.map((item) => item.text) : (dto.analysis.risks ?? []), portfolioItem: dto.portfolio_item,
     proposal: dto.proposal, status: dto.status, publishedAt: dto.published_at,

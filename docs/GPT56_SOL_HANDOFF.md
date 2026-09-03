@@ -143,7 +143,7 @@ Cookies и passwords площадок не отправлять backend. Не о
 
 ## 6. Миграции и конфигурация
 
-Актуальные migrations: `0005_web_sessions`, `0006_content_classification`, `0007_browser_extension`, `0008_hybrid_recommendations`.
+Актуальные migrations: `0005_web_sessions`, `0006_content_classification`, `0007_browser_extension`, `0008_hybrid_recommendations`, `0009_semantic_retrieval`.
 
 Создаёт:
 
@@ -152,7 +152,7 @@ Cookies и passwords площадок не отправлять backend. Не о
 - `web_sessions`.
 - `extension_link_tickets`, `extension_installations`;
 - `application_commands`, `extension_diagnostics`.
-- `opportunities.facts`, `facts_version` и explainable matching-поля `user_opportunities`.
+- `opportunities.facts`, `facts_version`, `semantic_representations` и explainable matching-поля `user_opportunities`.
 
 Полный pipeline и границы глобального/персонального анализа описаны в `docs/RECOMMENDATION_ARCHITECTURE.md`.
 

@@ -68,3 +68,61 @@ async def test_rebuild_ignores_onboarding_limit(settings, profile, tmp_path):
     assert counts["matches"] == 3
     assert match_count == 3
     await verification_engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_rebuild_preserves_historical_status_and_proposal(settings, profile, tmp_path):
+    database_url = f"sqlite+aiosqlite:///{tmp_path / 'history.db'}"
+    local_settings = settings.model_copy(update={"database_url": database_url})
+    engine = make_engine(database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    profile.candidate.skills = ["Python", "API"]
+    async with factory() as session:
+        user = TelegramUser(
+            telegram_user_id=101,
+            is_active=True,
+            profile=profile.model_dump(),
+            portfolio=[],
+        )
+        opportunity = Opportunity(
+            source="test",
+            source_type="web",
+            external_id="history",
+            title="Python API",
+            description="Build Python API",
+            raw_text="Build Python API",
+            normalized_hash="history".zfill(64),
+            content_category=ContentCategory.PROJECT,
+            classification_confidence=0.9,
+            classification_method=ClassificationMethod.DETERMINISTIC,
+            classification_reasons=["test"],
+            classification_version="intent-v1",
+            status=OpportunityStatus.NEW,
+            published_at=datetime.now(UTC),
+        )
+        session.add_all([user, opportunity])
+        await session.flush()
+        session.add(
+            UserOpportunity(
+                user_id=user.id,
+                opportunity_id=opportunity.id,
+                status=OpportunityStatus.CONTACTED,
+                proposal="Stored proposal",
+            )
+        )
+        await session.commit()
+    await engine.dispose()
+
+    counts = await rebuild_recommendations(local_settings, batch_size=1)
+
+    verification_engine = make_engine(database_url)
+    verification_factory = async_sessionmaker(verification_engine, expire_on_commit=False)
+    async with verification_factory() as session:
+        match = await session.scalar(select(UserOpportunity))
+    assert counts["historical_matches_refreshed"] == 1
+    assert match.status == OpportunityStatus.CONTACTED
+    assert match.proposal == "Stored proposal"
+    assert match.ranking_version == "hybrid-v2"
+    await verification_engine.dispose()

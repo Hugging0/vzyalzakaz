@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -37,23 +37,6 @@ class RawOpportunity(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-class LLMAnalysis(BaseModel):
-    job_type: str = "unknown"
-    summary: str = ""
-    required_skills: list[str] = Field(default_factory=list)
-    missing_skills: list[str] = Field(default_factory=list)
-    budget_quality: str = "unknown"
-    estimated_hours: float = 0
-    possible_with_vibe_coding: bool = False
-    requires_daytime_presence: bool = False
-    fit_reason: str = ""
-    risks: list[str] = Field(default_factory=list)
-    recommended_portfolio_project: str = ""
-    fit_score: float = Field(ge=0, le=100)
-    money_score: float = Field(ge=0, le=100)
-    win_score: float = Field(ge=0, le=100)
-
-
 class OpportunityFacts(BaseModel):
     """Candidate-independent facts extracted once from a global opportunity."""
 
@@ -68,6 +51,12 @@ class OpportunityFacts(BaseModel):
     budget_min: float | None = None
     budget_max: float | None = None
     currency: str | None = None
+    normalized_budget_min_rub: float | None = None
+    normalized_budget_max_rub: float | None = None
+    fx_rate_to_rub: float | None = None
+    fx_rate_date: date | None = None
+    fx_rate_source: str | None = None
+    fx_status: str = "missing"
     duration: str | None = None
     estimated_effort_min_hours: float | None = None
     estimated_effort_max_hours: float | None = None
@@ -118,8 +107,11 @@ class UserMatchAnalysis(BaseModel):
     why_recommended: list[MatchEvidence] = Field(default_factory=list)
     checks: list[MatchEvidence] = Field(default_factory=list)
     feature_vector: dict[str, float] = Field(default_factory=dict)
+    retrieval_method: str = "lexical_fallback"
+    retrieval_score: float = Field(default=0, ge=0, le=100)
+    retrieval_fallback_used: bool = True
     reranked: bool = False
-    ranking_version: str = "hybrid-v1"
+    ranking_version: str = "hybrid-v2"
 
 
 class ProfileIntake(BaseModel):

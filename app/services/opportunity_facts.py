@@ -7,11 +7,12 @@ import re
 from app.config import AppSettings
 from app.schemas import OpportunityFacts, RawOpportunity
 from app.services.content_classifier import ContentClassification
+from app.services.currency import FxRateProvider, build_fx_provider, normalize_currency
 from app.services.llm_client import ChatCompletionClient
 from app.services.normalizer import normalize_text
 
 logger = logging.getLogger(__name__)
-FACTS_VERSION = "facts-v1"
+FACTS_VERSION = "facts-v2"
 
 CAPABILITY_ALIASES = {
     "Python": ("python", "питон"),
@@ -46,9 +47,13 @@ CAPABILITY_ALIASES = {
 class OpportunityFactExtractor:
     """Extracts reusable facts without receiving a candidate profile."""
 
-    def __init__(self, settings: AppSettings):
+    def __init__(self, settings: AppSettings, fx_provider: FxRateProvider | None = None):
         self.settings = settings
         self.client = ChatCompletionClient(settings)
+        self.fx_provider = fx_provider or build_fx_provider(
+            settings.fx_provider,
+            settings.fx_timeout_seconds,
+        )
 
     async def extract(
         self,
@@ -68,14 +73,61 @@ class OpportunityFactExtractor:
                     ),
                     json_mode=True,
                 )
-                return self._merge_known(raw, classification, OpportunityFacts.model_validate(result))
+                facts = self._merge_known(raw, classification, OpportunityFacts.model_validate(result))
+                return await self._normalize_economics(raw, facts)
             except Exception:
                 logger.exception(
                     "Opportunity fact extraction failed for %s:%s; using deterministic facts",
                     raw.source,
                     raw.external_id,
                 )
-        return deterministic_facts(raw, classification)
+        return await self._normalize_economics(raw, deterministic_facts(raw, classification))
+
+    async def _normalize_economics(
+        self,
+        raw: RawOpportunity,
+        facts: OpportunityFacts,
+    ) -> OpportunityFacts:
+        currency = normalize_currency(facts.currency)
+        update = {
+            "currency": currency,
+            "normalized_budget_min_rub": None,
+            "normalized_budget_max_rub": None,
+            "fx_rate_to_rub": None,
+            "fx_rate_date": None,
+            "fx_rate_source": None,
+            "fx_status": "missing",
+        }
+        has_budget = facts.budget_min is not None or facts.budget_max is not None
+        if not has_budget:
+            return facts.model_copy(update=update)
+        if not currency:
+            update["fx_status"] = "currency_unknown"
+            return facts.model_copy(update=update)
+        requested_date = raw.published_at.date() if raw.published_at else None
+        quote = await self.fx_provider.get_rate(currency, requested_date)
+        if quote is None:
+            update["fx_status"] = "rate_unavailable"
+            return facts.model_copy(update=update)
+        update.update(
+            {
+                "normalized_budget_min_rub": (
+                    round(facts.budget_min * quote.rate_to_rub, 2)
+                    if facts.budget_min is not None
+                    else None
+                ),
+                "normalized_budget_max_rub": (
+                    round(facts.budget_max * quote.rate_to_rub, 2)
+                    if facts.budget_max is not None
+                    else None
+                ),
+                "fx_rate_to_rub": quote.rate_to_rub,
+                "fx_rate_date": quote.effective_date,
+                "fx_rate_source": quote.source,
+                "fx_status": "same_currency" if currency == "RUB" else "normalized",
+            }
+        )
+        return facts.model_copy(update=update)
 
     @staticmethod
     def _prompt(raw: RawOpportunity, classification: ContentClassification, schema: str) -> str:
@@ -120,6 +172,16 @@ Return only JSON matching this schema: {schema}
         update["technologies"] = _unique([*raw.technologies, *facts.technologies])
         contacts = [item for item in (raw.contact_username, raw.contact_email) if item]
         update["contacts"] = _unique([*contacts, *facts.contacts])
+        # Normalized economics is trusted only when produced by the configured FX provider.
+        for field in (
+            "normalized_budget_min_rub",
+            "normalized_budget_max_rub",
+            "fx_rate_to_rub",
+            "fx_rate_date",
+            "fx_rate_source",
+        ):
+            update[field] = None
+        update["fx_status"] = "missing"
         return OpportunityFacts.model_validate(update)
 
 

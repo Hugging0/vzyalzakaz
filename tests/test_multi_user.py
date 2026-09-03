@@ -1,3 +1,4 @@
+from copy import deepcopy
 from datetime import UTC, datetime
 
 import pytest
@@ -8,15 +9,7 @@ from app.database import make_engine
 from app.models import Base, OpportunityStatus, TelegramUser, UserOpportunity
 from app.schemas import RawOpportunity
 from app.services.pipeline import OpportunityPipeline
-from app.services.recommendations import RecommendationService, personalized_match_score
-
-
-def test_personalized_match_score_is_calibrated_for_product_thresholds():
-    feed_match = personalized_match_score(63, 98, 45, 54, 0)
-    realtime_match = personalized_match_score(85, 98, 45, 72, 100)
-
-    assert 60 <= feed_match < 82
-    assert realtime_match >= 82
+from app.services.recommendations import RecommendationService
 
 
 @pytest.mark.asyncio
@@ -90,10 +83,56 @@ async def test_personal_matches_do_not_leak_between_users(settings, profile):
     assert python_match.user_id == python_user.id
     assert other_match is None
     assert [item.user_id for item in stored] == [python_user.id]
-    assert opportunity.final_score is None
-    assert opportunity.analysis == {}
+    assert not hasattr(opportunity, "final_score")
+    assert not hasattr(opportunity, "analysis")
     assert python_match.analysis["why_recommended"][0]["source_facts"]
     assert python_match.analysis["why_recommended"][0]["profile_facts"]
     assert python_match.status == OpportunityStatus.APPROVED
     assert python_match.proposal == "Сохранённый отклик"
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_profile_change_changes_personal_score_not_global_facts(settings, profile):
+    engine = make_engine(settings.database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    pipeline = OpportunityPipeline(settings)
+    service = RecommendationService(settings, profile, settings.load_portfolio())
+    async with factory() as session:
+        opportunity = (
+            await pipeline.process(
+                session,
+                RawOpportunity(
+                    source="test",
+                    source_type="web",
+                    external_id="profile-change",
+                    title="Django API",
+                    raw_text="Need to build a Django backend API. Budget 50000 RUB, paid project.",
+                    budget_max=50_000,
+                    currency="RUB",
+                    published_at=datetime.now(UTC),
+                    metadata={"source_content_policy": "demand_only"},
+                ),
+            )
+        ).opportunity
+        user = await service.register_user(session, {"id": 2100, "first_name": "Developer"})
+        before = deepcopy(opportunity.facts)
+        first_profile = service.profile_for(user)
+        first_profile.candidate.skills = ["Django", "API"]
+        user.profile = first_profile.model_dump()
+        await session.commit()
+        first = await service.ensure_match(session, user, opportunity)
+        first_score = first.final_score
+        await service.reset_recommendations(session, user)
+        second_profile = service.profile_for(user)
+        second_profile.candidate.skills = ["Backend operations"]
+        user.profile = second_profile.model_dump()
+        await session.commit()
+        second = await service.ensure_match(session, user, opportunity)
+
+    assert second is not None
+    assert second.final_score != first_score
+    assert opportunity.facts == before
     await engine.dispose()

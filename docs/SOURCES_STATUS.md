@@ -133,7 +133,7 @@ Production scheduler опрашивает 16 Web / API / RSS-источнико�
 
 База постоянно растёт, поэтому точные числа следует получать запросом к production, а не считать этот документ счётчиком. На контрольном снимке после включения MTProto в ней было более 1 500 записей. Первые два обработанных Telegram-канала уже дали 49 сохранённых сообщений; backfill остальных каналов продолжался в фоне.
 
-Контрольные проходы всех 16 Web / API / RSS-источников завершались без ошибок. Для Telegram проверен полный путь: SOCKS5 → production MTProto DC → Telethon → normalization/prefilter → PostgreSQL.
+Контрольные проходы всех 16 Web / API / RSS-источников завершались без ошибок. Для Telegram проверен полный путь: SOCKS5 → production MTProto DC → Telethon → normalize/classify/extract → PostgreSQL.
 
 ## Где находится конфигурация
 

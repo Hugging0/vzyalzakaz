@@ -1,0 +1,108 @@
+version: retrieval-eval-v1
+limitations: Small synthetic regression corpus; not an estimate of live recommendation quality.
+scenarios:
+  - id: backend
+    profile: Backend API Python Django Ruby server integrations PostgreSQL
+    opportunities:
+      - {id: be1, text: Python FastAPI backend service, relevant: true}
+      - {id: be2, text: Django REST API development, relevant: true}
+      - {id: be3, text: Server-side webhook integration, relevant: true, adjacent: true}
+      - {id: be4, text: PostgreSQL database backend, relevant: true}
+      - {id: be5, text: Ruby Hanami service, relevant: true, adjacent: true}
+      - {id: be6, text: API authentication microservice, relevant: true}
+      - {id: be7, text: Python async data parser, relevant: true}
+      - {id: be8, text: Backend payment integration, relevant: true}
+      - {id: bx1, text: Figma mobile prototype, relevant: false}
+      - {id: bx2, text: Reels video montage, relevant: false}
+      - {id: bx3, text: SMM advertising campaign, relevant: false}
+      - {id: bx4, text: Copywriter for articles, relevant: false}
+  - id: frontend
+    profile: Frontend React TypeScript browser client interfaces Vue Next.js
+    opportunities:
+      - {id: fe1, text: React TypeScript frontend, relevant: true}
+      - {id: fe2, text: Vue client application, relevant: true}
+      - {id: fe3, text: Next.js website interface, relevant: true}
+      - {id: fe4, text: Browser client-side dashboard, relevant: true, adjacent: true}
+      - {id: fe5, text: JavaScript component library, relevant: true}
+      - {id: fe6, text: Responsive frontend layout, relevant: true}
+      - {id: fe7, text: React admin interface, relevant: true}
+      - {id: fe8, text: TypeScript web client, relevant: true}
+      - {id: fx1, text: PostgreSQL backend migration, relevant: false}
+      - {id: fx2, text: Video editing for reels, relevant: false}
+      - {id: fx3, text: SEO content strategy, relevant: false}
+      - {id: fx4, text: Brand identity in Figma, relevant: false}
+  - id: design
+    profile: UI UX product designer Figma web design interfaces branding
+    opportunities:
+      - {id: de1, text: UI UX design in Figma, relevant: true}
+      - {id: de2, text: Product interface prototype, relevant: true}
+      - {id: de3, text: Web design system, relevant: true}
+      - {id: de4, text: Mobile app user experience, relevant: true, adjacent: true}
+      - {id: de5, text: Figma landing page layouts, relevant: true}
+      - {id: de6, text: Brand identity designer, relevant: true}
+      - {id: de7, text: Interface usability audit, relevant: true}
+      - {id: de8, text: Product design components, relevant: true}
+      - {id: dx1, text: Python API backend, relevant: false}
+      - {id: dx2, text: SMM promotion, relevant: false}
+      - {id: dx3, text: Video color grading, relevant: false}
+      - {id: dx4, text: Sales copywriter, relevant: false}
+  - id: marketing
+    profile: SMM digital marketing advertising targeting SEO social media campaigns
+    opportunities:
+      - {id: ma1, text: SMM social media promotion, relevant: true}
+      - {id: ma2, text: Digital marketing campaign, relevant: true}
+      - {id: ma3, text: Advertising targeting setup, relevant: true}
+      - {id: ma4, text: SEO growth strategy, relevant: true}
+      - {id: ma5, text: Community content distribution, relevant: true, adjacent: true}
+      - {id: ma6, text: Marketing analytics audit, relevant: true}
+      - {id: ma7, text: Paid social campaign, relevant: true}
+      - {id: ma8, text: SMM content plan, relevant: true}
+      - {id: mx1, text: FastAPI microservice, relevant: false}
+      - {id: mx2, text: Figma prototype, relevant: false}
+      - {id: mx3, text: Motion graphics montage, relevant: false}
+      - {id: mx4, text: Legal article editing, relevant: false}
+  - id: video
+    profile: Video editor motion design montage reels After Effects animation
+    opportunities:
+      - {id: vi1, text: Video editing for reels, relevant: true}
+      - {id: vi2, text: Motion design animation, relevant: true}
+      - {id: vi3, text: After Effects graphics, relevant: true}
+      - {id: vi4, text: Short-form montage, relevant: true}
+      - {id: vi5, text: Animated product explainer, relevant: true, adjacent: true}
+      - {id: vi6, text: YouTube video editor, relevant: true}
+      - {id: vi7, text: Reels post-production, relevant: true}
+      - {id: vi8, text: Motion typography clip, relevant: true}
+      - {id: vx1, text: Django API project, relevant: false}
+      - {id: vx2, text: Figma dashboard design, relevant: false}
+      - {id: vx3, text: SMM campaign, relevant: false}
+      - {id: vx4, text: Technical copywriting, relevant: false}
+  - id: content
+    profile: Copywriter editor articles scripts content writing storytelling
+    opportunities:
+      - {id: co1, text: Copywriting for landing page, relevant: true}
+      - {id: co2, text: Article editor, relevant: true}
+      - {id: co3, text: Video script writing, relevant: true}
+      - {id: co4, text: Brand storytelling text, relevant: true, adjacent: true}
+      - {id: co5, text: Blog content writer, relevant: true}
+      - {id: co6, text: Product description copy, relevant: true}
+      - {id: co7, text: Technical article editing, relevant: true}
+      - {id: co8, text: Social post texts, relevant: true}
+      - {id: cx1, text: FastAPI backend, relevant: false}
+      - {id: cx2, text: UI design in Figma, relevant: false}
+      - {id: cx3, text: Video montage, relevant: false}
+      - {id: cx4, text: n8n workflow integration, relevant: false}
+  - id: automation
+    profile: Automation integrations n8n Make Zapier workflows webhooks Telegram bots
+    opportunities:
+      - {id: au1, text: n8n automation workflow, relevant: true}
+      - {id: au2, text: Make integration scenario, relevant: true}
+      - {id: au3, text: Zapier business automation, relevant: true}
+      - {id: au4, text: Webhook systems integration, relevant: true}
+      - {id: au5, text: Telegram bot workflow, relevant: true}
+      - {id: au6, text: Connect CRM and forms, relevant: true, adjacent: true}
+      - {id: au7, text: Automated data sync, relevant: true}
+      - {id: au8, text: API integration pipeline, relevant: true}
+      - {id: ax1, text: Figma brand design, relevant: false}
+      - {id: ax2, text: Reels montage, relevant: false}
+      - {id: ax3, text: SMM strategy, relevant: false}
+      - {id: ax4, text: Article copywriting, relevant: false}

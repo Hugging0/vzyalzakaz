@@ -161,6 +161,15 @@ def _lead_payload(match: UserOpportunity, opportunity: Opportunity) -> dict:
         budget = "Бюджет не указан"
     analysis = match.analysis or {}
     explanation = match.explanation or {}
+    facts = opportunity.facts or {}
+    normalized_min = facts.get("normalized_budget_min_rub")
+    normalized_max = facts.get("normalized_budget_max_rub")
+    fx_status = facts.get("fx_status", "missing")
+    normalized_label = None
+    if fx_status == "normalized" and (normalized_min is not None or normalized_max is not None):
+        low = f"{normalized_min:,.0f}" if normalized_min is not None else "?"
+        high = f"{normalized_max:,.0f}" if normalized_max is not None else "?"
+        normalized_label = f"{low}–{high} ₽"
     return {
         "id": match.id,
         "opportunity_id": str(opportunity.id),
@@ -171,7 +180,19 @@ def _lead_payload(match: UserOpportunity, opportunity: Opportunity) -> dict:
         "budget_label": budget,
         "final_score": match.final_score,
         "analysis": analysis,
-        "facts": opportunity.facts or {},
+        "facts": facts,
+        "economics": {
+            "original_label": budget,
+            "normalized_label": normalized_label,
+            "fx_status": fx_status,
+            "fx_rate": facts.get("fx_rate_to_rub"),
+            "fx_rate_date": facts.get("fx_rate_date"),
+            "fx_rate_source": facts.get("fx_rate_source"),
+            "requires_check": bool(
+                (opportunity.budget_min is not None or opportunity.budget_max is not None)
+                and fx_status not in {"normalized", "same_currency"}
+            ),
+        },
         "strength_label": analysis.get("strength_label") or explanation.get("strength_label"),
         "match_confidence": match.match_confidence,
         "feature_vector": match.feature_vector or {},
@@ -182,6 +203,7 @@ def _lead_payload(match: UserOpportunity, opportunity: Opportunity) -> dict:
         "checks": analysis.get("checks") or explanation.get("checks") or [],
         "ranking_version": match.ranking_version,
         "reranked": match.reranked,
+        "retrieval": explanation.get("retrieval", {}),
         "portfolio_item": match.portfolio_item,
         "proposal": match.proposal,
         "status": match.status.value,
@@ -655,7 +677,10 @@ async def list_portfolio(user: CurrentUser) -> list[dict]:
 
 @router.post("/app/portfolio")
 async def add_portfolio(
-    payload: PortfolioCreate, user: CurrentUser, session: AsyncSession = Depends(get_session)
+    payload: PortfolioCreate,
+    request: Request,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
 ) -> dict:
     db_user = await session.get(TelegramUser, user.id)
     slug = re.sub(r"[^a-z0-9]+", "-", payload.title.lower()).strip("-") or "case"
@@ -668,6 +693,8 @@ async def add_portfolio(
     )
     db_user.portfolio = [*(db_user.portfolio or []), project.model_dump()]
     await session.commit()
+    await request.app.state.runtime.recommendations.reset_recommendations(session, db_user)
+    await request.app.state.runtime.recommendations.backfill_user(session, db_user)
     return project.model_dump()
 
 
@@ -675,6 +702,7 @@ async def add_portfolio(
 async def update_portfolio(
     slug: str,
     payload: PortfolioUpdate,
+    request: Request,
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
@@ -694,12 +722,15 @@ async def update_portfolio(
         project.url = values["url"].strip() if values["url"] else None
     db_user.portfolio = [item.model_dump() for item in projects]
     await session.commit()
+    await request.app.state.runtime.recommendations.reset_recommendations(session, db_user)
+    await request.app.state.runtime.recommendations.backfill_user(session, db_user)
     return project.model_dump()
 
 
 @router.delete("/app/portfolio/{slug}")
 async def delete_portfolio(
     slug: str,
+    request: Request,
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
@@ -710,6 +741,8 @@ async def delete_portfolio(
         raise HTTPException(404, "Кейс не найден")
     db_user.portfolio = [item.model_dump() for item in remaining]
     await session.commit()
+    await request.app.state.runtime.recommendations.reset_recommendations(session, db_user)
+    await request.app.state.runtime.recommendations.backfill_user(session, db_user)
     return {"deleted": True}
 
 

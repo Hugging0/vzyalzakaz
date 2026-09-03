@@ -54,10 +54,5 @@ economics:
   target_hourly_rub: 2000
 
 ranking:
-  fit_weight: 0.40
-  money_weight: 0.25
-  win_weight: 0.25
-  freshness_weight: 0.10
   realtime_threshold: 82
   digest_threshold: 70
-

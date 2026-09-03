@@ -16,9 +16,8 @@ function freshness(publishedAt: string | null): string {
 }
 
 export function OrderListItem({ lead }: { lead: Lead }) {
-  const tone = lead.matchScore >= 90 ? "pink" : lead.matchScore >= 80 ? "yellow" : "blue";
   return (
-    <AppCard className="order-row" tone={tone}>
+    <AppCard className="order-row">
       <div className="order-score"><strong>{lead.matchScore}/100</strong><span>{lead.strengthLabel}</span></div>
       <div className="order-main">
         <div className="order-meta"><AppBadge>{freshness(lead.publishedAt)}</AppBadge><span>{lead.source}</span><span>{lead.budgetLabel}</span></div>

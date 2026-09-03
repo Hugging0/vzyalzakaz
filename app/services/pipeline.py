@@ -2,13 +2,21 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import UTC
 
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import AppSettings
-from app.models import ContentCategory, Opportunity, OpportunityStatus, SourceOccurrence, UserOpportunity
+from app.models import (
+    ContentCategory,
+    Opportunity,
+    OpportunityStatus,
+    SemanticRepresentation,
+    SourceOccurrence,
+    UserOpportunity,
+)
 from app.schemas import RawOpportunity
 from app.services.content_classifier import (
     ContentClassification,
@@ -70,7 +78,7 @@ class OpportunityPipeline:
             )
         )
         if exact:
-            if raw.edited_at and (not exact.edited_at or raw.edited_at > exact.edited_at):
+            if raw.edited_at and _is_newer_edit(raw.edited_at, exact.edited_at):
                 classification = await self.classifier.classify(raw)
                 self._update_content(exact, raw, content)
                 await self._classify_extract_and_persist(exact, raw, classification)
@@ -78,6 +86,12 @@ class OpportunityPipeline:
                     delete(UserOpportunity).where(
                         UserOpportunity.opportunity_id == exact.id,
                         UserOpportunity.status == OpportunityStatus.RECOMMENDED,
+                    )
+                )
+                await session.execute(
+                    delete(SemanticRepresentation).where(
+                        SemanticRepresentation.entity_type == "opportunity",
+                        SemanticRepresentation.entity_key == str(exact.id),
                     )
                 )
                 await session.commit()
@@ -173,7 +187,6 @@ class OpportunityPipeline:
         )
         opportunity.facts = facts.model_dump(mode="json")
         opportunity.facts_version = FACTS_VERSION
-        self._clear_legacy_personalization(opportunity)
 
     @staticmethod
     def _update_content(opportunity: Opportunity, raw: RawOpportunity, content) -> None:
@@ -190,21 +203,6 @@ class OpportunityPipeline:
             "technologies", "published_at", "apply_mode",
         ):
             setattr(opportunity, field, getattr(raw, field))
-
-    @staticmethod
-    def _clear_legacy_personalization(opportunity: Opportunity) -> None:
-        opportunity.prefilter_score = None
-        opportunity.prefilter_reasons = []
-        opportunity.analysis = {}
-        opportunity.fit_score = None
-        opportunity.money_score = None
-        opportunity.win_score = None
-        opportunity.freshness_score = None
-        opportunity.final_score = None
-        opportunity.estimated_effort_hours = None
-        opportunity.estimated_effective_hourly_rate = None
-        opportunity.portfolio_item = None
-        opportunity.proposal = None
 
     @staticmethod
     def _log_classification(raw: RawOpportunity, classification: ContentClassification) -> None:
@@ -237,3 +235,11 @@ def universal_rejection(raw: RawOpportunity, classification: ContentClassificati
     if category in SOURCE_POLICY_REJECT_CATEGORIES:
         return f"source_policy_violation:{category.value}"
     return None
+
+
+def _is_newer_edit(incoming, stored) -> bool:
+    if stored is None:
+        return True
+    incoming_value = incoming if incoming.tzinfo else incoming.replace(tzinfo=UTC)
+    stored_value = stored if stored.tzinfo else stored.replace(tzinfo=UTC)
+    return incoming_value > stored_value

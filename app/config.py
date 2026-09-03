@@ -48,10 +48,6 @@ class Economics(BaseModel):
 
 
 class Ranking(BaseModel):
-    fit_weight: float = 0.40
-    money_weight: float = 0.25
-    win_weight: float = 0.25
-    freshness_weight: float = 0.10
     realtime_threshold: float = 82
     digest_threshold: float = 60
 
@@ -150,11 +146,20 @@ class AppSettings(BaseSettings):
     registration_invite_code: str | None = None
     max_users: int = 100
     onboarding_backfill_limit: int = 200
-    matching_candidate_similarity_threshold: float = Field(default=8, ge=0, le=100)
+    matching_retrieval_top_k: int = Field(default=100, ge=1, le=1000)
+    matching_retrieval_min_score: float = Field(default=8, ge=0, le=100)
     matching_persist_score: float = Field(default=35, ge=0, le=100)
     matching_llm_rerank_enabled: bool = True
     matching_llm_rerank_threshold: float = Field(default=72, ge=0, le=100)
     matching_llm_rerank_top_k: int = Field(default=8, ge=0, le=50)
+    embedding_provider: Literal["openai_compatible", "disabled"] = "disabled"
+    embedding_api_key: str | None = None
+    embedding_model: str = "text-embedding-3-small"
+    embedding_base_url: str = "https://api.openai.com/v1"
+    embedding_timeout_seconds: int = Field(default=15, ge=1, le=120)
+    embedding_batch_size: int = Field(default=64, ge=1, le=256)
+    fx_provider: Literal["cbr", "disabled"] = "cbr"
+    fx_timeout_seconds: int = Field(default=5, ge=1, le=30)
     mini_app_session_secret: str | None = None
     mini_app_auth_max_age_seconds: int = 86_400
     mini_app_session_ttl_seconds: int = 604_800

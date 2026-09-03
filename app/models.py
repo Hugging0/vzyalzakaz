@@ -112,8 +112,6 @@ class Opportunity(Base):
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     raw_text: Mapped[str] = mapped_column(Text)
     normalized_hash: Mapped[str] = mapped_column(String(64), index=True)
-    prefilter_score: Mapped[float | None] = mapped_column(Float)
-    prefilter_reasons: Mapped[list] = mapped_column(JSON, default=list)
     content_category: Mapped[ContentCategory] = mapped_column(
         Enum(
             ContentCategory,
@@ -138,24 +136,11 @@ class Opportunity(Base):
     classification_version: Mapped[str | None] = mapped_column(String(30))
     facts: Mapped[dict] = mapped_column(JSON, default=dict)
     facts_version: Mapped[str | None] = mapped_column(String(30))
-    fit_score: Mapped[float | None] = mapped_column(Float)
-    money_score: Mapped[float | None] = mapped_column(Float)
-    win_score: Mapped[float | None] = mapped_column(Float)
-    freshness_score: Mapped[float | None] = mapped_column(Float)
-    final_score: Mapped[float | None] = mapped_column(Float, index=True)
-    estimated_effort_hours: Mapped[float | None] = mapped_column(Float)
-    estimated_effective_hourly_rate: Mapped[float | None] = mapped_column(Float)
-    analysis: Mapped[dict] = mapped_column(JSON, default=dict)
-    proposal: Mapped[str | None] = mapped_column(Text)
-    portfolio_item: Mapped[str | None] = mapped_column(String(100))
     status: Mapped[OpportunityStatus] = mapped_column(
         Enum(OpportunityStatus, native_enum=False), default=OpportunityStatus.NEW, index=True
     )
     skip_reason: Mapped[str | None] = mapped_column(String(100))
     apply_mode: Mapped[str] = mapped_column(String(30), default="draft_only")
-    notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     occurrences: Mapped[list[SourceOccurrence]] = relationship(
         back_populates="opportunity", cascade="all, delete-orphan"
@@ -166,7 +151,6 @@ class Opportunity(Base):
 
     __table_args__ = (
         UniqueConstraint("source", "external_id", name="uq_opportunity_source_external"),
-        Index("ix_opportunity_status_score", "status", "final_score"),
     )
 
 
@@ -247,15 +231,8 @@ class UserOpportunity(Base):
     opportunity_id: Mapped[UUID] = mapped_column(
         Uuid, ForeignKey("opportunities.id", ondelete="CASCADE"), index=True
     )
-    prefilter_score: Mapped[float] = mapped_column(Float)
-    prefilter_reasons: Mapped[list] = mapped_column(JSON, default=list)
     eligibility_reasons: Mapped[list] = mapped_column(JSON, default=list)
-    semantic_score: Mapped[float] = mapped_column(Float, default=0)
-    fit_score: Mapped[float] = mapped_column(Float)
-    money_score: Mapped[float] = mapped_column(Float)
-    win_score: Mapped[float] = mapped_column(Float)
-    freshness_score: Mapped[float] = mapped_column(Float)
-    final_score: Mapped[float] = mapped_column(Float, index=True)
+    final_score: Mapped[float] = mapped_column(Float, default=0, index=True)
     estimated_effort_hours: Mapped[float | None] = mapped_column(Float)
     estimated_effective_hourly_rate: Mapped[float | None] = mapped_column(Float)
     analysis: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -263,7 +240,7 @@ class UserOpportunity(Base):
     explanation: Mapped[dict] = mapped_column(JSON, default=dict)
     match_confidence: Mapped[float] = mapped_column(Float, default=0)
     reranked: Mapped[bool] = mapped_column(Boolean, default=False)
-    ranking_version: Mapped[str] = mapped_column(String(30), default="hybrid-v1")
+    ranking_version: Mapped[str] = mapped_column(String(30), default="hybrid-v2")
     proposal: Mapped[str | None] = mapped_column(Text)
     portfolio_item: Mapped[str | None] = mapped_column(String(100))
     status: Mapped[OpportunityStatus] = mapped_column(
@@ -283,6 +260,37 @@ class UserOpportunity(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "opportunity_id", name="uq_user_opportunity"),
         Index("ix_user_opportunity_status_score", "user_id", "status", "final_score"),
+    )
+
+
+class SemanticRepresentation(Base):
+    __tablename__ = "semantic_representations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    entity_type: Mapped[str] = mapped_column(String(30))
+    entity_key: Mapped[str] = mapped_column(String(80))
+    input_hash: Mapped[str] = mapped_column(String(64), index=True)
+    provider: Mapped[str] = mapped_column(String(50))
+    model: Mapped[str] = mapped_column(String(120))
+    dimensions: Mapped[int] = mapped_column(Integer)
+    vector: Mapped[list] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "entity_type",
+            "entity_key",
+            "provider",
+            "model",
+            name="uq_semantic_representation_entity_provider_model",
+        ),
     )
 
 

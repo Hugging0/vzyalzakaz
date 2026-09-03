@@ -2,10 +2,19 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.database import make_engine
-from app.models import Base, ClassificationMethod, ContentCategory, OpportunityStatus
+from app.models import (
+    Base,
+    ClassificationMethod,
+    ContentCategory,
+    OpportunityStatus,
+    SemanticRepresentation,
+    TelegramUser,
+    UserOpportunity,
+)
 from app.schemas import RawOpportunity
 from app.services.pipeline import OpportunityPipeline
 
@@ -50,8 +59,8 @@ async def test_pipeline_does_not_filter_by_owner_relevance(settings, profile):
     async with session_factory() as session:
         result = await pipeline.process(session, raw)
     assert result.opportunity.status == OpportunityStatus.NEW
-    assert result.opportunity.prefilter_score is None
-    assert result.opportunity.final_score is None
+    assert not hasattr(result.opportunity, "prefilter_score")
+    assert not hasattr(result.opportunity, "final_score")
     await engine.dispose()
 
 
@@ -82,7 +91,7 @@ async def test_pipeline_rejects_candidate_content_before_analyzer(settings, prof
     assert result.opportunity.content_category == ContentCategory.JOB_SEEKER
     assert result.opportunity.classification_confidence >= 0.82
     assert result.opportunity.classification_method == ClassificationMethod.DETERMINISTIC
-    assert result.opportunity.prefilter_score is None
+    assert not hasattr(result.opportunity, "prefilter_score")
     assert pipeline.fact_extractor.extract.await_args.kwargs["allow_llm"] is False
     await engine.dispose()
 
@@ -107,8 +116,8 @@ async def test_pipeline_persists_unknown_without_recommending_globally(settings,
     assert result.opportunity.status == OpportunityStatus.NEW
     assert result.opportunity.content_category == ContentCategory.UNKNOWN
     assert "semantic:unavailable" in result.opportunity.classification_reasons
-    assert result.opportunity.facts_version == "facts-v1"
-    assert result.opportunity.final_score is None
+    assert result.opportunity.facts_version == "facts-v2"
+    assert not hasattr(result.opportunity, "final_score")
     await engine.dispose()
 
 
@@ -165,7 +174,73 @@ async def test_global_ingestion_is_candidate_neutral(settings, profile):
 
     assert first.opportunity.status == OpportunityStatus.NEW
     assert second.opportunity.status == OpportunityStatus.NEW
-    assert first.opportunity.prefilter_score is None
-    assert second.opportunity.prefilter_score is None
+    assert not hasattr(first.opportunity, "prefilter_score")
+    assert not hasattr(second.opportunity, "prefilter_score")
     assert first.opportunity.facts["skills"] != second.opportunity.facts["skills"]
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_edited_opportunity_invalidates_semantics_and_only_pending_matches(settings, profile):
+    engine = make_engine(settings.database_url)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    pipeline = OpportunityPipeline(settings)
+    original = RawOpportunity(
+        source="edit-test",
+        source_type="web",
+        external_id="same-id",
+        title="Python API",
+        raw_text="Looking for Python API developer",
+        edited_at=datetime(2026, 9, 3, 10, tzinfo=UTC),
+    )
+    async with session_factory() as session:
+        opportunity = (await pipeline.process(session, original)).opportunity
+        first = TelegramUser(telegram_user_id=8001, profile=profile.model_dump(), portfolio=[])
+        second = TelegramUser(telegram_user_id=8002, profile=profile.model_dump(), portfolio=[])
+        session.add_all([first, second])
+        await session.flush()
+        pending = UserOpportunity(user_id=first.id, opportunity_id=opportunity.id)
+        historical = UserOpportunity(
+            user_id=second.id,
+            opportunity_id=opportunity.id,
+            status=OpportunityStatus.APPROVED,
+            proposal="Keep this proposal",
+        )
+        session.add_all(
+            [
+                pending,
+                historical,
+                SemanticRepresentation(
+                    entity_type="opportunity",
+                    entity_key=str(opportunity.id),
+                    input_hash="old",
+                    provider="test",
+                    model="test",
+                    dimensions=2,
+                    vector=[1.0, 0.0],
+                ),
+            ]
+        )
+        await session.commit()
+        edited = original.model_copy(
+            update={
+                "title": "Django API",
+                "raw_text": "Looking for Django API developer",
+                "edited_at": datetime(2026, 9, 3, 11, tzinfo=UTC),
+            }
+        )
+        result = await pipeline.process(session, edited)
+        matches = (await session.scalars(select(UserOpportunity))).all()
+        cache_count = await session.scalar(
+            select(func.count()).select_from(SemanticRepresentation)
+        )
+
+    assert result.updated
+    assert result.opportunity.title == "Django API"
+    assert cache_count == 0
+    assert [(item.status, item.proposal) for item in matches] == [
+        (OpportunityStatus.APPROVED, "Keep this proposal")
+    ]
     await engine.dispose()

@@ -41,12 +41,6 @@ async def test_legacy_supply_post_is_reclassified_as_global_reject(
         match = UserOpportunity(
             user_id=user.id,
             opportunity_id=opportunity.id,
-            prefilter_score=90,
-            fit_score=90,
-            money_score=50,
-            win_score=70,
-            freshness_score=80,
-            final_score=85,
             status=OpportunityStatus.RECOMMENDED,
         )
         session.add(match)

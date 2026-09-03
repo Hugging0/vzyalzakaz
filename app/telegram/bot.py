@@ -337,7 +337,7 @@ class TelegramBot:
             profile = self.recommendations.profile_for(db_user)
             profile.candidate.about = value[:2000]
             db_user.profile = _profile_with_ui(db_user, profile)
-            await session.commit()
+            await self.recommendations.reset_recommendations(session, db_user)
         await self._send_message(user.telegram_user_id, "Описание сохранено.")
 
     async def _add_portfolio(self, user: TelegramUser, value: str) -> None:
@@ -359,14 +359,14 @@ class TelegramBot:
         async with self.session_factory() as session:
             db_user = await session.get(TelegramUser, user.id)
             db_user.portfolio = [*(db_user.portfolio or []), project.model_dump()]
-            await session.commit()
+            await self.recommendations.reset_recommendations(session, db_user)
         await self._send_message(user.telegram_user_id, "Кейс добавлен в портфолио.")
 
     async def _clear_portfolio(self, user: TelegramUser) -> None:
         async with self.session_factory() as session:
             db_user = await session.get(TelegramUser, user.id)
             db_user.portfolio = []
-            await session.commit()
+            await self.recommendations.reset_recommendations(session, db_user)
         await self._send_message(user.telegram_user_id, "Портфолио очищено.")
 
     async def _set_active(self, user: TelegramUser, active: bool) -> None:
@@ -486,7 +486,7 @@ class TelegramBot:
                     mime_type=document.get("mime_type"),
                 )
                 db_user.portfolio = [*(db_user.portfolio or []), project.model_dump()]
-                await session.commit()
+                await self.recommendations.reset_recommendations(session, db_user)
             await self._send_message(
                 user.telegram_user_id,
                 f"<b>{html.escape(file_name)}</b> добавлен в портфолио.",
@@ -883,11 +883,7 @@ def _profile_with_ui(user: TelegramUser, profile) -> dict:
 
 
 def _format_card(opportunity: Opportunity, match: UserOpportunity) -> str:
-    budget = "не указан"
-    if opportunity.budget_min or opportunity.budget_max:
-        low = f"{opportunity.budget_min:,.0f}" if opportunity.budget_min else "?"
-        high = f"{opportunity.budget_max:,.0f}" if opportunity.budget_max else "?"
-        budget = f"{low}-{high} {opportunity.currency or ''}".strip()
+    budget = _format_budget(opportunity)
     analysis = match.analysis or {}
     strength = str(analysis.get("strength_label") or "Совпадение")
     why = analysis.get("why_recommended") or []
@@ -898,6 +894,26 @@ def _format_card(opportunity: Opportunity, match: UserOpportunity) -> str:
         f"{html.escape(opportunity.source)} · {html.escape(budget)}\n\n"
         f"{html.escape(str(reason or 'Откройте заказ, чтобы увидеть разбор совпадения.'))}"
     )
+
+
+def _format_budget(opportunity: Opportunity) -> str:
+    if not (opportunity.budget_min or opportunity.budget_max):
+        return "бюджет не указан"
+    low = f"{opportunity.budget_min:,.0f}" if opportunity.budget_min else "?"
+    high = f"{opportunity.budget_max:,.0f}" if opportunity.budget_max else "?"
+    original = f"{low}–{high} {opportunity.currency or ''}".strip()
+    facts = opportunity.facts or {}
+    normalized_min = facts.get("normalized_budget_min_rub")
+    normalized_max = facts.get("normalized_budget_max_rub")
+    if facts.get("fx_status") == "normalized" and (
+        normalized_min is not None or normalized_max is not None
+    ):
+        normalized_low = f"{normalized_min:,.0f}" if normalized_min is not None else "?"
+        normalized_high = f"{normalized_max:,.0f}" if normalized_max is not None else "?"
+        return f"{original} · ≈ {normalized_low}–{normalized_high} ₽"
+    if facts.get("fx_status") in {"currency_unknown", "rate_unavailable"}:
+        return f"{original} · курс требует проверки"
+    return original
 
 
 def _format_details(opportunity: Opportunity, match: UserOpportunity) -> str:

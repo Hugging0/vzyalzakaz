@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
-import math
-from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 
 from pydantic import BaseModel, Field
 
@@ -14,29 +14,33 @@ from app.schemas import MatchDimension, MatchEvidence, OpportunityFacts, UserMat
 from app.services.llm_client import ChatCompletionClient
 from app.services.normalizer import normalize_text
 from app.services.ranking import freshness_score
+from app.services.retrieval import fallback_concepts, lexical_similarity
 
 logger = logging.getLogger(__name__)
-RANKING_VERSION = "hybrid-v1"
+RANKING_VERSION = "hybrid-v2"
 
-CONCEPT_ALIASES = {
-    "backend": ("backend", "бекенд", "server", "сервер"),
-    "frontend": ("frontend", "фронтенд", "react", "vue", "next.js", "javascript", "typescript"),
-    "python": ("python", "питон", "fastapi", "django"),
-    "api": ("api", "rest", "webhook", "интеграц"),
-    "automation": ("automation", "автоматизац", "workflow", "n8n", "make.com", "zapier"),
-    "telegram": ("telegram", "телеграм", "бот"),
-    "data": ("postgres", "sql", "database", "база данных", "парсер", "scraping"),
-    "ai": ("llm", "gpt", "deepseek", "openai", "нейросет", "ai agent", "ии-агент"),
-    "design": ("figma", "ui/ux", "web design", "дизайн", "интерфейс", "айдентик"),
-    "marketing": ("smm", "seo", "маркет", "реклам"),
-    "content": ("copywriting", "копирай", "редактор", "тексты", "статья"),
-    "video": ("video", "видео", "монтаж", "motion", "моушн"),
-}
 
-STOP_WORDS = {
-    "the", "and", "for", "with", "this", "that", "from", "или", "для", "что", "как",
-    "это", "нужен", "нужно", "ищем", "ищу", "работа", "проект", "задача", "опыт",
-}
+@dataclass(frozen=True, slots=True)
+class RankingPolicy:
+    version: str = RANKING_VERSION
+    weights: Mapping[str, float] = field(
+        default_factory=lambda: MappingProxyType(
+            {
+                "semantic_retrieval": 0.28,
+                "skill_overlap": 0.20,
+                "portfolio_similarity": 0.12,
+                "economics_fit": 0.12,
+                "freshness": 0.08,
+                "format_fit": 0.08,
+                "availability_fit": 0.05,
+                "client_attractiveness": 0.04,
+                "timing": 0.03,
+            }
+        )
+    )
+
+
+RANKING_POLICY = RankingPolicy()
 
 
 @dataclass(slots=True)
@@ -53,7 +57,7 @@ class RerankResult(BaseModel):
 
 
 class UserMatchAnalyzer:
-    """Runs candidate-specific retrieval and ranking after global persistence."""
+    """Builds candidate-specific features and ranking after retrieval."""
 
     def __init__(self, settings: AppSettings):
         self.settings = settings
@@ -70,8 +74,8 @@ class UserMatchAnalyzer:
         searchable = normalize_text(
             " ".join(
                 [
-                    opportunity.title,
-                    opportunity.description,
+                    opportunity.title or "",
+                    opportunity.description or "",
                     *facts.skills,
                     *facts.technologies,
                     *facts.deliverables,
@@ -97,10 +101,12 @@ class UserMatchAnalyzer:
             failures.append("full_time")
         if profile.avoid.daily_daytime_calls and "daytime_calls" in facts.meeting_constraints:
             failures.append("daytime_calls")
+        comparable_max = facts.normalized_budget_max_rub
+        if comparable_max is None and facts.currency == "RUB":
+            comparable_max = facts.budget_max
         if (
-            facts.currency == "RUB"
-            and facts.budget_max is not None
-            and facts.budget_max < profile.economics.minimum_project_rub
+            comparable_max is not None
+            and comparable_max < profile.economics.minimum_project_rub
         ):
             failures.append("budget_below_floor")
 
@@ -129,9 +135,20 @@ class UserMatchAnalyzer:
         profile: CandidateProfile,
         portfolio: list[PortfolioProject],
         *,
+        retrieval_score: float | None = None,
+        embedding_score: float | None = None,
+        retrieval_fallback_used: bool = True,
         allow_llm_rerank: bool = True,
     ) -> UserMatchAnalysis:
-        analysis = deterministic_match(opportunity, facts, profile, portfolio)
+        analysis = deterministic_match(
+            opportunity,
+            facts,
+            profile,
+            portfolio,
+            retrieval_score=retrieval_score,
+            embedding_score=embedding_score,
+            retrieval_fallback_used=retrieval_fallback_used,
+        )
         if (
             allow_llm_rerank
             and self.settings.matching_llm_rerank_enabled
@@ -202,6 +219,10 @@ def deterministic_match(
     facts: OpportunityFacts,
     profile: CandidateProfile,
     portfolio: list[PortfolioProject],
+    *,
+    retrieval_score: float | None = None,
+    embedding_score: float | None = None,
+    retrieval_fallback_used: bool = True,
 ) -> UserMatchAnalysis:
     requested = _unique([*facts.skills, *facts.technologies])
     primary = _unique(profile.candidate.skills)
@@ -210,9 +231,13 @@ def deterministic_match(
     primary_keys = {_key(value): value for value in primary}
     secondary_keys = {_key(value): value for value in secondary}
     direct_keys = set(requested_by_key) & (set(primary_keys) | set(secondary_keys))
-    requested_concepts = _concepts(" ".join(requested))
-    profile_concepts = _concepts(" ".join([*primary, *secondary, profile.candidate.about]))
-    transferable_concepts = sorted((requested_concepts & profile_concepts) - _concepts(" ".join(direct_keys)))
+    requested_concepts = fallback_concepts(
+        " ".join([facts.title, *requested, *facts.deliverables])
+    )
+    profile_concepts = fallback_concepts(" ".join([*primary, *secondary, profile.candidate.about]))
+    transferable_concepts = sorted(
+        (requested_concepts & profile_concepts) - fallback_concepts(" ".join(direct_keys))
+    )
     matched = [requested_by_key[key] for key in sorted(direct_keys)]
     transferred = [f"{concept} — смежный опыт" for concept in transferable_concepts]
 
@@ -220,7 +245,11 @@ def deterministic_match(
         [facts.title, *requested, *facts.deliverables, facts.work_type, facts.category]
     )
     profile_text = " ".join([profile.candidate.about, *primary, *secondary])
-    semantic = semantic_similarity(profile_text, opportunity_text)
+    semantic = (
+        retrieval_score
+        if retrieval_score is not None
+        else lexical_similarity(profile_text, opportunity_text)
+    )
     skill_score = (
         45.0
         if not requested
@@ -229,7 +258,7 @@ def deterministic_match(
 
     portfolio_scores = [
         (
-            semantic_similarity(
+            lexical_similarity(
                 f"{item.title} {item.description} {' '.join(item.skills)}", opportunity_text
             ),
             item,
@@ -250,7 +279,7 @@ def deterministic_match(
     client = _client_score(facts)
     timing = _timing_score(facts, fresh)
     features = {
-        "semantic_similarity": round(semantic, 2),
+        "semantic_retrieval": round(semantic, 2),
         "skill_overlap": round(skill_score, 2),
         "portfolio_similarity": round(best_portfolio_score, 2),
         "economics_fit": round(money, 2),
@@ -260,22 +289,16 @@ def deterministic_match(
         "client_attractiveness": round(client, 2),
         "timing": round(timing, 2),
     }
-    weights = {
-        "semantic_similarity": 0.28,
-        "skill_overlap": 0.20,
-        "portfolio_similarity": 0.12,
-        "economics_fit": 0.12,
-        "freshness": 0.08,
-        "format_fit": 0.08,
-        "availability_fit": 0.05,
-        "client_attractiveness": 0.04,
-        "timing": 0.03,
-    }
-    score = _clamp(sum(features[key] * weight for key, weight in weights.items()))
+    if embedding_score is not None:
+        features["embedding_similarity"] = round(embedding_score, 2)
+    score = _clamp(
+        sum(features[key] * weight for key, weight in RANKING_POLICY.weights.items())
+    )
     missing = [
         requested_by_key[key]
         for key in requested_by_key
-        if key not in direct_keys and not (_concepts(requested_by_key[key]) & profile_concepts)
+        if key not in direct_keys
+        and not (fallback_concepts(requested_by_key[key]) & profile_concepts)
     ]
     why = _why_recommended(
         facts,
@@ -340,19 +363,11 @@ def deterministic_match(
         why_recommended=why[:4],
         checks=checks[:4],
         feature_vector=features,
+        retrieval_method="lexical_fallback" if retrieval_fallback_used else "embedding_hybrid",
+        retrieval_score=round(semantic, 2),
+        retrieval_fallback_used=retrieval_fallback_used,
         ranking_version=RANKING_VERSION,
     )
-
-
-def semantic_similarity(left: str, right: str) -> float:
-    left_vector = _semantic_vector(left)
-    right_vector = _semantic_vector(right)
-    if not left_vector or not right_vector:
-        return 0
-    numerator = sum(value * right_vector.get(key, 0) for key, value in left_vector.items())
-    left_norm = math.sqrt(sum(value * value for value in left_vector.values()))
-    right_norm = math.sqrt(sum(value * value for value in right_vector.values()))
-    return round(numerator / max(left_norm * right_norm, 1e-9) * 100, 2)
 
 
 def strength_label(score: float) -> str:
@@ -363,24 +378,6 @@ def strength_label(score: float) -> str:
     if score >= 55:
         return "Стоит проверить"
     return "Слабое совпадение"
-
-
-def _semantic_vector(text: str) -> Counter[str]:
-    normalized = normalize_text(text)
-    tokens = [token for token in normalized.split() if len(token) >= 3 and token not in STOP_WORDS]
-    vector: Counter[str] = Counter(tokens)
-    for concept in _concepts(normalized):
-        vector[f"concept:{concept}"] += 3
-    return vector
-
-
-def _concepts(text: str) -> set[str]:
-    normalized = normalize_text(text)
-    return {
-        concept
-        for concept, aliases in CONCEPT_ALIASES.items()
-        if any(alias in normalized for alias in aliases)
-    }
 
 
 def _why_recommended(
@@ -409,8 +406,10 @@ def _why_recommended(
                 profile_facts=["profile.skills"],
             )
         )
-    if facts.currency == "RUB" and (facts.budget_max or facts.budget_min):
-        budget = facts.budget_max or facts.budget_min or 0
+    if facts.fx_status in {"normalized", "same_currency"} and (
+        facts.normalized_budget_max_rub or facts.normalized_budget_min_rub
+    ):
+        budget = facts.normalized_budget_max_rub or facts.normalized_budget_min_rub or 0
         if budget >= profile.economics.minimum_project_rub:
             reasons.append(
                 MatchEvidence(
@@ -476,6 +475,17 @@ def _checks(
                     source_facts=[f"opportunity.risk_flags:{risk}"],
                 )
             )
+    if (
+        (facts.budget_min is not None or facts.budget_max is not None)
+        and facts.fx_status not in {"normalized", "same_currency"}
+    ):
+        checks.append(
+            MatchEvidence(
+                text="Бюджет указан, но курс для сравнения недоступен — проверьте деньги вручную.",
+                source_facts=["opportunity.fx_status", *_budget_refs(facts)],
+                profile_facts=[f"profile.minimum_project_rub:{profile.economics.minimum_project_rub}"],
+            )
+        )
     if facts.meeting_constraints:
         checks.append(
             MatchEvidence(
@@ -488,8 +498,8 @@ def _checks(
 
 
 def _money_score(facts: OpportunityFacts, profile: CandidateProfile) -> float:
-    expected = facts.budget_max or facts.budget_min
-    if expected is None or facts.currency != "RUB":
+    expected = facts.normalized_budget_max_rub or facts.normalized_budget_min_rub
+    if expected is None or facts.fx_status not in {"normalized", "same_currency"}:
         return 50
     minimum = max(profile.economics.minimum_project_rub, 1)
     if expected >= minimum * 2:
@@ -575,6 +585,15 @@ def _budget_refs(facts: OpportunityFacts) -> list[str]:
         refs.append(f"opportunity.budget_max:{facts.budget_max:g}")
     if facts.currency:
         refs.append(f"opportunity.currency:{facts.currency}")
+    if facts.normalized_budget_min_rub is not None:
+        refs.append(f"opportunity.normalized_budget_min_rub:{facts.normalized_budget_min_rub:g}")
+    if facts.normalized_budget_max_rub is not None:
+        refs.append(f"opportunity.normalized_budget_max_rub:{facts.normalized_budget_max_rub:g}")
+    if facts.fx_rate_to_rub is not None:
+        refs.append(f"opportunity.fx_rate_to_rub:{facts.fx_rate_to_rub:g}")
+    if facts.fx_rate_date:
+        refs.append(f"opportunity.fx_rate_date:{facts.fx_rate_date.isoformat()}")
+    refs.append(f"opportunity.fx_status:{facts.fx_status}")
     return refs or ["opportunity.budget"]
 
 
@@ -595,6 +614,7 @@ def _allowed_references(
         "opportunity.work_type",
         "opportunity.remote",
         "opportunity.budget",
+        "opportunity.fx_status",
     }
     source.update(f"opportunity.skills:{item}" for item in [*facts.skills, *facts.technologies])
     source.update(f"opportunity.risk_flags:{item}" for item in facts.risk_flags)

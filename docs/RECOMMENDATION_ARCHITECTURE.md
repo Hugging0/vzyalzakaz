@@ -1,62 +1,115 @@
 # Recommendation architecture
 
-Статус: обязательный backend-контракт с 2026-09-02.
+Статус: обязательный backend-контракт с 2026-09-03.
 
-## Граница глобального ingestion
+## Global ingestion boundary
 
 ```text
-collect → normalize → deduplicate → classify demand/supply → extract neutral facts → persist
+collect → normalize → deduplicate → classify demand/supply
+→ extract candidate-neutral facts → persist
 ```
 
-`OpportunityPipeline` не получает `CandidateProfile`, портфолио или настройки владельца. В `Opportunity` сохраняются исходник, классификация и один переиспользуемый `OpportunityFacts`. Глобальные поля старого персонального scoring остаются только ради совместимости схемы и всегда очищаются.
+`OpportunityPipeline` не получает профиль, портфолио или настройки владельца. Глобально
+разрешены только reject для пустого/невалидного контента, true duplicate, supply-side,
+spam/scam с высокой уверенностью и явного нарушения source policy. `unknown` сохраняется.
+Навыки, бюджет, доступность, язык и формат конкретного пользователя глобальными фильтрами
+не являются.
 
-Допустимые причины глобального reject:
+`Opportunity` хранит только источник, классификацию и нейтральный `OpportunityFacts`.
+Персональные score, объяснения, proposal и workflow живут в `UserOpportunity`. Миграция
+`0009_semantic_retrieval` физически удаляет прежние candidate-specific поля из глобальной
+таблицы.
 
-- пустой или невалидный контент;
-- supply-side публикация;
-- spam/scam с высокой уверенностью;
-- истинный дубликат;
-- нарушение политики источника.
+## OpportunityFacts v2
 
-`unknown` сохраняется, но не участвует в подборе до demand-классификации. Навык, бюджет, доступность, язык пользователя и предпочитаемый формат никогда не являются глобальным фильтром.
+Facts извлекаются один раз из недоверенного текста и включают title, work type, category,
+skills/technologies, seniority, deliverables, duration, effort range, explicit language,
+remote/time-zone/meeting constraints, client/competition facts, deadline, contacts, risks,
+source confidence и evidence. Язык публикации не превращается в language requirement.
 
-## Нейтральные факты
+LLM получает строгую JSON schema и не видит кандидата. Невалидный ответ или outage переводит
+extraction на deterministic fallback.
 
-`OpportunityFacts` извлекается один раз и не содержит оценки кандидата: title, work type, category, skills/technologies, seniority, deliverables, raw/normalized budget, currency, duration, effort range, remote/time-zone/meeting constraints, explicit language requirements, client/competition facts, deadline, contacts, risks, source confidence и evidence.
+### Multi-currency normalization
 
-Если LLM недоступна или возвращает невалидный ответ, используется детерминированный extractor. Текст источника считается недоверенными данными и не может давать инструкции модели.
+Исходные `budget_min`, `budget_max`, `currency` и `budget_raw` сохраняются без потери. Для
+сравнения добавляются `normalized_budget_*_rub`, `fx_rate_to_rub`, `fx_rate_date`,
+`fx_rate_source` и `fx_status`.
 
-## Персональная рекомендация
+`FxRateProvider` отделён от extraction. Штатный `CbrFxRateProvider` запрашивает официальный
+daily XML Банка России с timeout и cache на дату; в тестах используется только injected
+provider. Отсутствующий или неизвестный курс не вызывает hard reject: economics получает
+нейтральную оценку, а UI показывает «требует проверки». Нормализованная сумма показывается
+только при известном курсе, исходная валюта — всегда.
+
+## Retrieval implementation
 
 ```text
 OpportunityFacts
-  → A. cheap eligibility
-  → B. semantic candidate retrieval
-  → C. deterministic features
-  → D. optional LLM rerank только top-K
-  → E. UserOpportunity + UserMatchAnalysis
+  → A. cheap user eligibility
+  → B. cached semantic retrieval, top-K
+  → C. deterministic feature builder and versioned rank policy
+  → D. bounded LLM rerank for top candidates only
+  → E. UserOpportunity + provenance
 ```
 
-A проверяет только ограничения конкретного пользователя: excluded terms, selected sources/formats, remote, очевидный budget floor, невозможный язык, full-time/office/relocation/daytime calls.
+Stage A проверяет только user-specific hard constraints: excluded terms, source/format,
+remote, office/relocation/full-time/daytime calls, очевидный сопоставимый budget floor и
+невозможный explicit language.
 
-B использует семантическое сходство профиля, навыков, результата задачи и портфолио. Exact skill не является обязательным: смежная capability может пройти retrieval.
+Stage B использует `EmbeddingProvider`. Реализация `OpenAICompatibleEmbeddingProvider`
+работает через `POST /embeddings`; base URL, model, timeout и batch size задаются в
+`AppSettings`. Профиль включает about, primary/secondary skills и портфолио. Opportunity input
+строится из нейтральных facts. `SemanticRepresentation` кэширует нормализованные vectors по
+entity, provider, model, retrieval version и input hash:
 
-C сохраняет feature vector: semantic similarity, skill overlap, portfolio similarity, economics, freshness, format, availability, client attractiveness и timing. Итог — rank `/100`, не вероятность.
+- opportunity embedding считается один раз на версию facts/text;
+- profile embedding переиспользуется и меняется при изменении релевантных полей/портфолио;
+- ответы проверяются на count, dimensions, numeric finite values и non-zero norm до записи;
+- частичный невалидный batch откатывается;
+- edited opportunity удаляет semantic cache и только pending recommendations.
 
-D получает только уже отобранный top-K, может скорректировать балл не более чем на восемь пунктов и обязан использовать разрешённые fact IDs. При outage остаётся детерминированный hybrid score. Legacy `personalized_match_score` сохранён только как аварийный fallback и не вызывается штатным pipeline.
+При disabled/outage/invalid embedding используется отдельный `lexical_fallback_v2` с
+word/character features и общей capability ontology. Это режим деградации, а не параллельный
+primary scoring engine. В штатном embedding mode итог retrieval сочетает semantic vector и
+малую lexical component. Только top-K передаётся дорогому feature/rank слою.
 
-E хранит в `UserOpportunity` персональный score, confidence, feature vector, dimensions, причины, проверки, выбранный кейс и версию ranking. `Opportunity` не меняется от результатов пользователя.
+Stage C сохраняет vector `semantic_retrieval`, skill overlap, portfolio similarity, economics,
+freshness, format, availability, client attractiveness и timing. Все веса живут в одном
+`RankingPolicy`, имеют версию `hybrid-v2` и в сумме равны 1. Старые пользовательские weight
+поля и `personalized_match_score` удалены.
 
-## Объяснимость
+Stage D применяется только к верхним `matching_llm_rerank_top_k`, меняет score максимум на
+8 пунктов и принимает только разрешённые source/profile fact IDs. Outage оставляет
+детерминированный результат.
 
-`MatchEvidence` валиден только при наличии `source_facts` или `profile_facts`. UI отображает силу совпадения и `/100`, измерения, `Почему рекомендуем` и `Что проверить`. Пользовательские статусы и уведомления читаются только из принадлежащего ему `UserOpportunity`.
+Stage E хранит rank `/100` (не вероятность), confidence, dimensions, reasons, checks,
+retrieval method/fallback, evidence provenance, rerank flag и версии алгоритмов.
 
-## Backfill и эксплуатация
+## Rebuild and operations
 
-После migration `0008_hybrid_recommendations` выполнить:
+После migration `0009_semantic_retrieval`:
 
 ```bash
-python -m app.rebuild_recommendations
+python -m app.rebuild_recommendations --batch-size 200
 ```
 
-Команда детерминированно пересобирает neutral facts и объяснения исторических matches без изменения их workflow-статусов или откликов. Затем она удаляет только ещё не обработанные `recommended` matches и строит их заново для активных пользователей по всему глобальному корпусу; onboarding-лимит здесь намеренно не применяется. `--llm-facts` разрешает дорогой LLM backfill; без флага новые ingestion всё равно используют настроенный LLM, а исторические данные обрабатываются безопасным fallback.
+Rebuild идемпотентно и пакетно обновляет только устаревшие facts, продолжает после единичной
+ошибки, сохраняет actioned workflow/proposal/history, удаляет только `recommended`, затем
+сканирует полный глобальный corpus для каждого активного пользователя. Onboarding limit к
+admin rebuild не применяется. `--llm-facts` явно включает дорогой исторический extraction.
+
+Логи batch содержат только counters/latency: scanned, eligibility rejected, retrieval
+candidates, ranked, persisted, rerank count, cache hits/misses и fallback. Исходный текст,
+профили и секреты в логи не выводятся.
+
+## Evaluation boundary
+
+`tests/fixtures/retrieval_evaluation.yaml` — маленький synthetic regression corpus по backend,
+frontend, design, marketing, video, content и automation. Gate: Precision@10 ≥ 0.80,
+Recall@10 = 1.0 и отсутствие miss для вручную отмеченных adjacent cases. Отдельные тесты
+проверяют реальный provider path на семантической паре без общих токенов, cache invalidation,
+outage и malformed vectors.
+
+Это инженерный regression corpus, а не оценка качества на production-трафике. Для продуктовой
+калибровки нужны обезличенные реальные решения пользователей и более широкий ручной benchmark.
