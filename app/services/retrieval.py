@@ -47,10 +47,35 @@ FALLBACK_CAPABILITY_GROUPS = {
     "data": ("data", "данн", "аналит", "sql", "etl", "bi", "machine learning"),
 }
 STOP_WORDS = {
-    "для", "или", "это", "как", "the", "and", "with", "from", "нужно", "ищем", "работа",
-    "проект", "задача", "требуется", "looking", "project", "developer", "специалист",
-    "проекты", "проектов", "задачи", "задач", "опыт", "опытом", "работы", "условия",
-    "условий", "описание", "ищу",
+    "для",
+    "или",
+    "это",
+    "как",
+    "the",
+    "and",
+    "with",
+    "from",
+    "нужно",
+    "ищем",
+    "работа",
+    "проект",
+    "задача",
+    "требуется",
+    "looking",
+    "project",
+    "developer",
+    "специалист",
+    "проекты",
+    "проектов",
+    "задачи",
+    "задач",
+    "опыт",
+    "опытом",
+    "работы",
+    "условия",
+    "условий",
+    "описание",
+    "ищу",
 }
 
 
@@ -88,26 +113,29 @@ class CandidateRetriever:
         fallback_used = True
         embedding_scores: list[float | None] = [None] * len(candidates)
         cache_hits = cache_misses = 0
-        if self.provider.available:
+        external_ai_indices = [
+            index for index, (opportunity, _) in enumerate(candidates) if opportunity.external_ai_allowed
+        ]
+        if self.provider.available and external_ai_indices:
             try:
                 async with session.begin_nested():
-                    profile_vector, hit = await self._vector(
-                        session, "profile", str(user.id), profile_text
-                    )
+                    profile_vector, hit = await self._vector(session, "profile", str(user.id), profile_text)
                     cache_hits += int(hit)
                     cache_misses += int(not hit)
                     vectors, hits = await self._opportunity_vectors(
                         session,
-                        [str(opportunity.id) for opportunity, _ in candidates],
-                        opportunity_texts,
-                        [opportunity.facts_version or "unversioned" for opportunity, _ in candidates],
+                        [str(candidates[index][0].id) for index in external_ai_indices],
+                        [opportunity_texts[index] for index in external_ai_indices],
+                        [
+                            candidates[index][0].facts_version or "unversioned"
+                            for index in external_ai_indices
+                        ],
                     )
                     cache_hits += hits
                     cache_misses += len(vectors) - hits
-                    embedding_scores = [
-                        round(cosine(profile_vector, vector) * 100, 2) for vector in vectors
-                    ]
-                fallback_used = False
+                    for index, vector in zip(external_ai_indices, vectors, strict=True):
+                        embedding_scores[index] = round(cosine(profile_vector, vector) * 100, 2)
+                fallback_used = len(external_ai_indices) != len(candidates)
             except EmbeddingError:
                 logger.warning("retrieval_embedding_fallback provider=%s", self.provider.name, exc_info=True)
         results = []
@@ -115,9 +143,7 @@ class CandidateRetriever:
             candidates, lexical, embedding_scores, strict=True
         ):
             score = (
-                lexical_score
-                if embedding_score is None
-                else embedding_score * 0.85 + lexical_score * 0.15
+                lexical_score if embedding_score is None else embedding_score * 0.85 + lexical_score * 0.15
             )
             results.append(
                 RetrievalCandidate(
@@ -126,7 +152,7 @@ class CandidateRetriever:
                     score=round(score, 2),
                     embedding_score=embedding_score,
                     lexical_score=round(lexical_score, 2),
-                    fallback_used=fallback_used,
+                    fallback_used=embedding_score is None,
                 )
             )
         results.sort(key=lambda item: item.score, reverse=True)
@@ -218,9 +244,7 @@ class CandidateRetriever:
         expected = dict(zip(keys, hashes, strict=True))
         valid: dict[str, list[float]] = {}
         for row in rows:
-            if row.input_hash != expected.get(row.entity_key) or row.dimensions != len(
-                row.vector or []
-            ):
+            if row.input_hash != expected.get(row.entity_key) or row.dimensions != len(row.vector or []):
                 continue
             try:
                 valid[row.entity_key] = validate_vectors([row.vector], expected=1)[0]
@@ -279,17 +303,20 @@ def profile_retrieval_text(
     specialties: list[str] | None = None,
 ) -> str:
     cases = [f"{item.title}. {item.description}. {' '.join(item.skills)}" for item in portfolio]
-    return "\n".join(
-        value
-        for value in (
-            profile.candidate.about,
-            ", ".join(profile.candidate.skills),
-            ", ".join(profile.candidate.secondary_skills),
-            ", ".join(specialties or []),
-            " | ".join(cases),
+    return (
+        "\n".join(
+            value
+            for value in (
+                profile.candidate.about,
+                ", ".join(profile.candidate.skills),
+                ", ".join(profile.candidate.secondary_skills),
+                ", ".join(specialties or []),
+                " | ".join(cases),
+            )
+            if value.strip()
         )
-        if value.strip()
-    ) or "Profile has no described capabilities"
+        or "Profile has no described capabilities"
+    )
 
 
 def opportunity_retrieval_text(facts: OpportunityFacts) -> str:
@@ -337,13 +364,11 @@ def text_hash(text: str) -> str:
 
 def _fallback_vector(text: str) -> Counter[str]:
     normalized = normalize_text(text)
-    tokens = [
-        token for token in re.findall(r"[a-zа-яё0-9+#.]{3,}", normalized) if token not in STOP_WORDS
-    ]
+    tokens = [token for token in re.findall(r"[a-zа-яё0-9+#.]{3,}", normalized) if token not in STOP_WORDS]
     vector: Counter[str] = Counter(tokens)
     for token in tokens:
         if len(token) >= 5:
-            vector.update(f"tri:{token[index:index + 3]}" for index in range(len(token) - 2))
+            vector.update(f"tri:{token[index : index + 3]}" for index in range(len(token) - 2))
     for concept in fallback_concepts(normalized):
         vector[f"concept:{concept}"] += 4
     return vector

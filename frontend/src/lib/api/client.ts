@@ -1,4 +1,4 @@
-import type { ApplicationCommand, ApplicationEvent, BillingStatus, ExtensionStatus, LeadStatus, PersonalAnalytics, PortfolioCase, Profile, SourceConnection } from "@/types/domain";
+import type { ApplicationAction, ApplicationCommand, ApplicationEvent, BillingStatus, ExtensionStatus, HHConnection, LeadStatus, PersonalAnalytics, PortfolioCase, Profile, SourceConnection } from "@/types/domain";
 
 const sessionKey = "hunt-agent-session";
 
@@ -61,6 +61,13 @@ export const miniAppApi = {
   disconnectExtension: (installationId: string) => request<{ disconnected: boolean }>(`/api/app/extension/installations/${encodeURIComponent(installationId)}`, { method: "DELETE" }),
   queueApplication: (id: number, idempotencyKey: string) => request<ApplicationCommand>(`/api/app/leads/${id}/application-command`, { method: "POST", headers: { "Idempotency-Key": idempotencyKey } }),
   applicationCommand: (id: number) => request<ApplicationCommand | null>(`/api/app/leads/${id}/application-command`),
+  application: (id: number) => request<ApplicationAction>(`/api/app/leads/${id}/application`),
+  submitApplication: (id: number, idempotencyKey: string) => request<ApplicationAction>(`/api/app/leads/${id}/application`, { method: "POST", headers: { "Idempotency-Key": idempotencyKey } }),
+  hhConnection: () => request<HHConnection>("/api/app/connections/hh"),
+  startHHOAuth: (agreementAccepted: boolean) => request<{ authorizeUrl: string }>("/api/app/connections/hh/oauth/start", { method: "POST", body: JSON.stringify({ agreement_accepted: agreementAccepted }) }),
+  refreshHHResumes: () => request<HHConnection>("/api/app/connections/hh/resumes/refresh", { method: "POST" }),
+  selectHHResume: (resumeId: string) => request<HHConnection>("/api/app/connections/hh/resume", { method: "PATCH", body: JSON.stringify({ resume_id: resumeId }) }),
+  disconnectHH: () => request<HHConnection>("/api/app/connections/hh", { method: "DELETE" }),
   setAgentActive: (isActive: boolean) => request<Profile>("/api/app/agent", { method: "PATCH", body: JSON.stringify({ is_active: isActive }) }),
   billing: () => request<BillingStatus>("/api/app/billing"),
   createCheckout: (idempotencyKey: string) => request<BillingStatus>("/api/app/billing/checkout", { method: "POST", headers: { "Idempotency-Key": idempotencyKey } }),

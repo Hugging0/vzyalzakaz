@@ -86,6 +86,7 @@ class SourceConfig(BaseModel):
         ]
     ] = Field(default_factory=lambda: ["collect", "requires_confirmation"])
     adapter_id: str | None = None
+    application_provider: Literal["browser_extension", "hh"] | None = None
     application_hosts: list[str] = Field(default_factory=list)
     content_policy: Literal["mixed", "demand_only"] = "mixed"
     poll_interval: int = 1800
@@ -173,6 +174,16 @@ class AppSettings(BaseSettings):
     extension_command_ttl_seconds: int = 900
     extension_offline_after_seconds: int = 120
 
+    hh_client_id: str | None = None
+    hh_client_secret: str | None = None
+    hh_token_encryption_key: str | None = None
+    hh_user_agent: str = "VzyalZakaz/0.1 (support@vzyalzakaz.ru)"
+    hh_api_base_url: str = "https://api.hh.ru"
+    hh_oauth_authorize_url: str = "https://hh.ru/oauth/authorize"
+    hh_oauth_state_ttl_seconds: int = 600
+    hh_request_timeout_seconds: int = 15
+    hh_allow_external_llm: bool = False
+
     public_base_url: str | None = None
     yookassa_shop_id: str | None = None
     yookassa_secret_key: str | None = None
@@ -194,6 +205,15 @@ class AppSettings(BaseSettings):
     @property
     def yookassa_ready(self) -> bool:
         return bool(self.yookassa_shop_id and self.yookassa_secret_key and self.public_base_url)
+
+    @property
+    def hh_oauth_ready(self) -> bool:
+        return bool(
+            self.hh_client_id
+            and self.hh_client_secret
+            and self.hh_token_encryption_key
+            and self.public_base_url
+        )
 
     def load_profile(self) -> CandidateProfile:
         return CandidateProfile.model_validate(_read_yaml(self.config_dir / "candidate_profile.yaml"))

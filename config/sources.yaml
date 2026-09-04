@@ -46,10 +46,15 @@ sources:
     priority: tier_a
     enabled: false
     collector: hh
-    apply_mode: draft_only
+    apply_mode: api_allowed
+    submission_type: api
+    application_provider: hh
+    adapter_id: hh
+    application_hosts: [hh.ru]
+    capabilities: [collect, quick_apply, browser_autofill, custom_questions, requires_auth, requires_confirmation]
     poll_interval: 900
     url: https://api.hh.ru/vacancies
-    options: {query: "Python OR FastAPI OR автоматизация OR LLM", limit: 50}
+    options: {query: "", period_days: 2, per_page: 50, max_pages: 3, recheck_limit: 20}
 
   - name: remotive
     type: api

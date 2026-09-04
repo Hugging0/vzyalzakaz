@@ -1,0 +1,1 @@
+"""Official HeadHunter API integration."""

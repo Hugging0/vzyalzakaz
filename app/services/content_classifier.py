@@ -17,9 +17,7 @@ from app.services.normalizer import normalize_text
 
 logger = logging.getLogger(__name__)
 CLASSIFICATION_VERSION = "intent-v1"
-DEMAND_CATEGORIES = frozenset(
-    {ContentCategory.PROJECT, ContentCategory.JOB, ContentCategory.GIG}
-)
+DEMAND_CATEGORIES = frozenset({ContentCategory.PROJECT, ContentCategory.JOB, ContentCategory.GIG})
 CATEGORY_PRIORITY = {
     ContentCategory.SPAM_OR_SCAM: 5,
     ContentCategory.AGENCY_OFFER: 4,
@@ -264,13 +262,20 @@ class ContentClassifier:
                 reasons=assessment.reasons,
             )
 
-        if not self.semantic.available:
+        if not self.semantic.available or not bool(raw.metadata.get("external_ai_allowed", True)):
             return self._finish(
                 started,
                 category=ContentCategory.UNKNOWN,
                 confidence=assessment.confidence,
                 method=ClassificationMethod.DETERMINISTIC,
-                reasons=[*assessment.reasons, "semantic:unavailable"],
+                reasons=[
+                    *assessment.reasons,
+                    (
+                        "semantic:source_policy"
+                        if not bool(raw.metadata.get("external_ai_allowed", True))
+                        else "semantic:unavailable"
+                    ),
+                ],
             )
 
         try:

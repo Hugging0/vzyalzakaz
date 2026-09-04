@@ -83,6 +83,21 @@ class ApplicationCommandStatus(StrEnum):
     EXPIRED = "expired"
 
 
+class ExternalConnectionStatus(StrEnum):
+    CONNECTED = "connected"
+    REAUTH_REQUIRED = "reauth_required"
+    ERROR = "error"
+
+
+class ApplicationAttemptStatus(StrEnum):
+    PROCESSING = "processing"
+    SUBMITTED = "submitted"
+    ALREADY_APPLIED = "already_applied"
+    EXTERNAL_ACTION_REQUIRED = "external_action_required"
+    FAILED = "failed"
+    UNCERTAIN = "uncertain"
+
+
 class Opportunity(Base):
     __tablename__ = "opportunities"
 
@@ -109,6 +124,9 @@ class Opportunity(Base):
     technologies: Mapped[list] = mapped_column(JSON, default=list)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    source_checked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
+    )
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     raw_text: Mapped[str] = mapped_column(Text)
     normalized_hash: Mapped[str] = mapped_column(String(64), index=True)
@@ -141,6 +159,8 @@ class Opportunity(Base):
     )
     skip_reason: Mapped[str | None] = mapped_column(String(100))
     apply_mode: Mapped[str] = mapped_column(String(30), default="draft_only")
+    provider_metadata: Mapped[dict] = mapped_column(JSON, default=dict)
+    external_ai_allowed: Mapped[bool] = mapped_column(Boolean, default=True)
 
     occurrences: Mapped[list[SourceOccurrence]] = relationship(
         back_populates="opportunity", cascade="all, delete-orphan"
@@ -149,9 +169,7 @@ class Opportunity(Base):
         back_populates="opportunity", cascade="all, delete-orphan"
     )
 
-    __table_args__ = (
-        UniqueConstraint("source", "external_id", name="uq_opportunity_source_external"),
-    )
+    __table_args__ = (UniqueConstraint("source", "external_id", name="uq_opportunity_source_external"),)
 
 
 class SourceOccurrence(Base):
@@ -274,9 +292,7 @@ class SemanticRepresentation(Base):
     model: Mapped[str] = mapped_column(String(120))
     dimensions: Mapped[int] = mapped_column(Integer)
     vector: Mapped[list] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
@@ -322,9 +338,7 @@ class WebLoginTicket(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 
 class WebSession(Base):
@@ -336,11 +350,121 @@ class WebSession(Base):
     )
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
+class ExternalConnection(Base):
+    __tablename__ = "external_connections"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("telegram_users.id", ondelete="CASCADE"), index=True
     )
-    last_seen_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    provider: Mapped[str] = mapped_column(String(40), index=True)
+    external_user_id: Mapped[str | None] = mapped_column(String(100))
+    access_token_encrypted: Mapped[str | None] = mapped_column(Text)
+    refresh_token_encrypted: Mapped[str | None] = mapped_column(Text)
+    token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    selected_resume_id: Mapped[str | None] = mapped_column(String(100))
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[ExternalConnectionStatus] = mapped_column(
+        Enum(
+            ExternalConnectionStatus,
+            native_enum=False,
+            values_callable=lambda enum: [item.value for item in enum],
+        ),
+        default=ExternalConnectionStatus.CONNECTED,
+        index=True,
+    )
+    last_error_code: Mapped[str | None] = mapped_column(String(60))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
+
+    __table_args__ = (UniqueConstraint("user_id", "provider", name="uq_external_connection_user_provider"),)
+
+
+class OAuthState(Base):
+    __tablename__ = "oauth_states"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("telegram_users.id", ondelete="CASCADE"), index=True
+    )
+    provider: Mapped[str] = mapped_column(String(40), index=True)
+    state_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
+class IntegrationAuditEvent(Base):
+    __tablename__ = "integration_audit_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("telegram_users.id", ondelete="CASCADE"), index=True
+    )
+    provider: Mapped[str] = mapped_column(String(40), index=True)
+    event: Mapped[str] = mapped_column(String(60), index=True)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
+    )
+
+
+class ApplicationAttempt(Base):
+    __tablename__ = "application_attempts"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("telegram_users.id", ondelete="CASCADE"), index=True
+    )
+    user_opportunity_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("user_opportunities.id", ondelete="CASCADE"), index=True
+    )
+    provider: Mapped[str] = mapped_column(String(40), index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(100))
+    status: Mapped[ApplicationAttemptStatus] = mapped_column(
+        Enum(
+            ApplicationAttemptStatus,
+            native_enum=False,
+            values_callable=lambda enum: [item.value for item in enum],
+        ),
+        default=ApplicationAttemptStatus.PROCESSING,
+        index=True,
+    )
+    external_id: Mapped[str | None] = mapped_column(String(120))
+    error_code: Mapped[str | None] = mapped_column(String(60))
+    detail: Mapped[str | None] = mapped_column(String(255))
+    result: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "idempotency_key", name="uq_application_attempt_idempotency"),
+        UniqueConstraint(
+            "user_id",
+            "user_opportunity_id",
+            "provider",
+            name="uq_application_attempt_match_provider",
+        ),
+        Index(
+            "ix_application_attempt_user_opportunity_provider",
+            "user_id",
+            "user_opportunity_id",
+            "provider",
+        ),
     )
 
 
@@ -354,9 +478,7 @@ class ExtensionLinkTicket(Base):
     code_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 
 class ExtensionInstallation(Base):
@@ -375,16 +497,12 @@ class ExtensionInstallation(Base):
     last_error_code: Mapped[str | None] = mapped_column(String(60))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
     )
 
-    __table_args__ = (
-        UniqueConstraint("user_id", "installation_id", name="uq_extension_user_installation"),
-    )
+    __table_args__ = (UniqueConstraint("user_id", "installation_id", name="uq_extension_user_installation"),)
 
 
 class ApplicationCommand(Base):

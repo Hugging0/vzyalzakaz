@@ -30,6 +30,7 @@ from app.services.application_commands import (
     create_application_command,
     update_command_status,
 )
+from app.services.application_service import ApplicationService
 from app.services.extension_sessions import (
     create_extension_link_ticket,
     exchange_extension_link_ticket,
@@ -83,15 +84,11 @@ class LinkExchange(BaseModel):
 
 class Heartbeat(BaseModel):
     version: str = Field(min_length=1, max_length=30, pattern=r"^[0-9A-Za-z.+-]+$")
-    active_source_id: str | None = Field(
-        default=None, validation_alias="activeSourceId", max_length=100
+    active_source_id: str | None = Field(default=None, validation_alias="activeSourceId", max_length=100)
+    marketplace_auth_state: Literal["AUTHENTICATED", "AUTH_REQUIRED", "UNKNOWN", "UNSUPPORTED"] | None = (
+        Field(default=None, validation_alias="marketplaceAuthState")
     )
-    marketplace_auth_state: Literal[
-        "AUTHENTICATED", "AUTH_REQUIRED", "UNKNOWN", "UNSUPPORTED"
-    ] | None = Field(default=None, validation_alias="marketplaceAuthState")
-    last_error_code: ERROR_CODES | None = Field(
-        default=None, validation_alias="lastErrorCode"
-    )
+    last_error_code: ERROR_CODES | None = Field(default=None, validation_alias="lastErrorCode")
 
 
 class CommandResult(BaseModel):
@@ -135,9 +132,7 @@ class CommandStatusUpdate(BaseModel):
     status: ApplicationCommandStatus
     result: CommandResult | None = None
     error_code: ERROR_CODES | None = Field(default=None, validation_alias="errorCode")
-    error_detail: str | None = Field(
-        default=None, validation_alias="errorDetail", max_length=255
-    )
+    error_detail: str | None = Field(default=None, validation_alias="errorDetail", max_length=255)
 
 
 class DiagnosticEvent(BaseModel):
@@ -182,9 +177,7 @@ def _installation_payload(
     settings: AppSettings,
 ) -> dict:
     now = datetime.now(UTC)
-    last_seen = installation.last_seen_at.replace(
-        tzinfo=installation.last_seen_at.tzinfo or UTC
-    )
+    last_seen = installation.last_seen_at.replace(tzinfo=installation.last_seen_at.tzinfo or UTC)
     online = last_seen >= now - timedelta(seconds=settings.extension_offline_after_seconds)
     return {
         "id": str(installation.id),
@@ -270,9 +263,7 @@ async def queue_application_command(
     if match.status not in {OpportunityStatus.RECOMMENDED, OpportunityStatus.APPROVED}:
         raise HTTPException(409, "Отклик уже отправлен или заказ закрыт")
     if not match.proposal:
-        await request.app.state.runtime.recommendations.generate_proposal(
-            session, user, match, opportunity
-        )
+        await request.app.state.runtime.recommendations.generate_proposal(session, user, match, opportunity)
     command = await create_application_command(
         session,
         settings,
@@ -282,6 +273,56 @@ async def queue_application_command(
         idempotency_key,
     )
     return command_payload(command)
+
+
+@router.post("/app/leads/{match_id}/application")
+async def submit_application(
+    match_id: int,
+    request: Request,
+    user: CurrentUser,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    session: AsyncSession = Depends(get_session),
+    settings: AppSettings = Depends(get_settings),
+) -> dict:
+    if not idempotency_key or not 8 <= len(idempotency_key) <= 100:
+        raise HTTPException(400, "Нужен корректный Idempotency-Key")
+    owned = (
+        await session.execute(
+            select(UserOpportunity, Opportunity)
+            .join(Opportunity, Opportunity.id == UserOpportunity.opportunity_id)
+            .where(UserOpportunity.id == match_id, UserOpportunity.user_id == user.id)
+        )
+    ).first()
+    if owned is None:
+        raise HTTPException(404, "Заказ не найден")
+    match, opportunity = owned
+    if match.status not in {OpportunityStatus.RECOMMENDED, OpportunityStatus.APPROVED}:
+        return (await ApplicationService(settings).status(session, user, match, opportunity)).payload()
+    if not match.proposal:
+        await request.app.state.runtime.recommendations.generate_proposal(session, user, match, opportunity)
+    return (
+        await ApplicationService(settings).submit(session, user, match, opportunity, idempotency_key)
+    ).payload()
+
+
+@router.get("/app/leads/{match_id}/application")
+async def application_status(
+    match_id: int,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+    settings: AppSettings = Depends(get_settings),
+) -> dict:
+    owned = (
+        await session.execute(
+            select(UserOpportunity, Opportunity)
+            .join(Opportunity, Opportunity.id == UserOpportunity.opportunity_id)
+            .where(UserOpportunity.id == match_id, UserOpportunity.user_id == user.id)
+        )
+    ).first()
+    if owned is None:
+        raise HTTPException(404, "Заказ не найден")
+    match, opportunity = owned
+    return (await ApplicationService(settings).status(session, user, match, opportunity)).payload()
 
 
 @router.get("/app/leads/{match_id}/application-command")
@@ -410,11 +451,7 @@ async def record_extension_diagnostics(
             command = await session.get(ApplicationCommand, item.command_id)
             if command is None or command.user_id != installation.user_id:
                 continue
-        safe_metadata = {
-            key: value
-            for key, value in item.metadata.items()
-            if key in SAFE_TELEMETRY_KEYS
-        }
+        safe_metadata = {key: value for key, value in item.metadata.items() if key in SAFE_TELEMETRY_KEYS}
         session.add(
             ExtensionDiagnostic(
                 user_id=installation.user_id,
@@ -445,5 +482,6 @@ async def extension_sources(
             "capabilities": source.capabilities,
         }
         for source in settings.load_sources()
-        if source.submission_type == "browser_extension" and source.adapter_id
+        if source.adapter_id
+        and (source.submission_type == "browser_extension" or source.application_provider == "hh")
     ]

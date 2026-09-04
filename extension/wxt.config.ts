@@ -9,6 +9,8 @@ const marketplaceHosts = [
   "https://*.fl.ru/*",
   "https://kwork.ru/*",
   "https://*.kwork.ru/*",
+  "https://hh.ru/*",
+  "https://*.hh.ru/*",
 ];
 
 export default defineConfig({

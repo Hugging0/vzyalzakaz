@@ -171,6 +171,20 @@ Pipeline ingestion должен разделять:
 
 Нельзя считать action успешным только потому, что HTTP request завершился без exception.
 
+Способ отправки выбирается backend-реестром `ApplicationProvider`, а не условием по имени
+площадки во frontend. `HHApplicationProvider` использует официальный API;
+`BrowserExtensionApplicationProvider` ставит существующую `ApplicationCommand`. Один
+user-facing endpoint возвращает доменное состояние, включая `external_action_required`.
+
+Токены внешних площадок принадлежат паре user/provider, шифруются перед записью и никогда
+не входят в DTO. OAuth `state` случайный, одноразовый, ограничен TTL и хранится только как hash.
+Внешняя mutation без подтверждённого ответа получает `uncertain`: автоматический retry запрещён.
+
+Для источника HH действует отдельная data boundary: исходный текст и факты не передаются во
+внешний LLM. Разрешить это можно только после явного письменного согласования с HH и отдельного
+изменения `HH_ALLOW_EXTERNAL_LLM`; local deterministic extraction, retrieval и proposal fallback
+остаются доступны.
+
 ---
 
 ## 12. Retries

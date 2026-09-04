@@ -6,6 +6,10 @@
 
 PWA создаёт персонализированный отклик и ставит серверную `ApplicationCommand`. Extension использует только текущую браузерную сессию пользователя, открывает allowlisted job URL, находит форму и заполняет известные поля. Пользователь проверяет результат и сам нажимает Submit.
 
+Для HH расширение является только fallback: обычный отклик отправляет официальный API после
+явного клика пользователя. Команда расширению создаётся, когда HH сообщает об обязательном
+тесте, анкете или другом действии, которое API завершить не может.
+
 Расширение никогда:
 
 - не получает и не хранит пароль площадки;
@@ -63,6 +67,7 @@ MV3 service worker не считается постоянно живым. `chrom
 - `freelance_ru`;
 - `fl_ru`;
 - `kwork_projects`.
+- `hh` — только fallback официального API.
 
 Селекторы сначала используют стабильные attributes/name/test ids, затем русские и английские label patterns. Значения записываются нативным setter и подтверждаются событиями `input`, `change`, `blur`, что совместимо с React/Vue controlled inputs. Неизвестные обязательные поля остаются пустыми и попадают в `attentionFields`.
 
@@ -72,7 +77,7 @@ DOM площадок меняется без нашего релиза, поэт
 
 - Backend повторно проверяет владельца lead и installation для каждой команды.
 - Job URL обязан быть HTTPS и совпадать с `application_hosts`; userinfo запрещён.
-- Host permissions ограничены четырьмя marketplace domains и API `vzyalzakaz.ru`.
+- Host permissions ограничены пятью marketplace domains и API `vzyalzakaz.ru`.
 - Content script получает только конкретный command payload.
 - Diagnostics принимает фиксированные event names и allowlisted metadata keys; тексты отклика, DOM, ответы и токены отбрасываются.
 - Ошибки типизированы: auth, unsupported source/page, missing/changed form, validation, page load, expiry и backend availability.
@@ -90,7 +95,7 @@ npm run zip
 
 Перед Chrome Web Store:
 
-1. проверить четыре площадки на отдельном тестовом профиле;
+1. проверить пять площадок на отдельных тестовых профилях; для HH — только fallback-сценарий;
 2. подтвердить, что Submit ни при каких сценариях не вызывается;
 3. подготовить privacy policy и disclosure запрашиваемых host permissions;
 4. зафиксировать постоянный extension ID и добавить его как `NEXT_PUBLIC_EXTENSION_ID`;

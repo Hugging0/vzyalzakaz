@@ -28,7 +28,13 @@ class CollectorRunner:
             await session.commit()
             run_id = run.id
             try:
-                items = await create_collector(config).fetch_new()
+                collector = create_collector(config, self.pipeline.settings)
+                incremental_fetch = getattr(collector, "fetch_incremental", None)
+                items = (
+                    await incremental_fetch(session)
+                    if incremental_fetch is not None
+                    else await collector.fetch_new()
+                )
                 created = 0
                 merged = 0
                 classifications: Counter[str] = Counter()
@@ -65,6 +71,9 @@ class CollectorRunner:
                         and self.notifier
                     ):
                         await self.notifier.notify(opportunity)
+                reconcile = getattr(collector, "reconcile", None)
+                if reconcile is not None:
+                    await reconcile(session)
                 run = await session.get(CollectorRun, run_id)
                 run.fetched = len(items)
                 run.created = created

@@ -11,6 +11,8 @@ import type {
 const matches = [
   "https://freelancer.com/*",
   "https://*.freelancer.com/*",
+  "https://hh.ru/*",
+  "https://*.hh.ru/*",
   "https://freelance.ru/*",
   "https://*.freelance.ru/*",
   "https://fl.ru/*",

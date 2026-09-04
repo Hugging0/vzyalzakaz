@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC
+from datetime import UTC, datetime
 
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
@@ -78,6 +78,7 @@ class OpportunityPipeline:
             )
         )
         if exact:
+            exact.source_checked_at = datetime.now(UTC)
             if raw.edited_at and _is_newer_edit(raw.edited_at, exact.edited_at):
                 classification = await self.classifier.classify(raw)
                 self._update_content(exact, raw, content)
@@ -102,6 +103,9 @@ class OpportunityPipeline:
                     updated=True,
                     classification=classification,
                 )
+            exact.provider_metadata = dict(raw.metadata.get("provider_metadata") or {})
+            exact.external_ai_allowed = bool(raw.metadata.get("external_ai_allowed", True))
+            await session.commit()
             return ProcessResult(exact, created=False)
 
         duplicate = await session.scalar(
@@ -153,6 +157,8 @@ class OpportunityPipeline:
             normalized_hash=content.content_hash,
             status=OpportunityStatus.NEW,
             apply_mode=raw.apply_mode,
+            provider_metadata=dict(raw.metadata.get("provider_metadata") or {}),
+            external_ai_allowed=bool(raw.metadata.get("external_ai_allowed", True)),
         )
         await self._classify_extract_and_persist(opportunity, raw, classification)
         session.add(opportunity)
@@ -183,7 +189,7 @@ class OpportunityPipeline:
         facts = await self.fact_extractor.extract(
             raw,
             classification,
-            allow_llm=rejection is None,
+            allow_llm=rejection is None and bool(raw.metadata.get("external_ai_allowed", True)),
         )
         opportunity.facts = facts.model_dump(mode="json")
         opportunity.facts_version = FACTS_VERSION
@@ -198,11 +204,25 @@ class OpportunityPipeline:
         opportunity.contact_username = content.contact_username
         opportunity.contact_email = content.contact_email
         for field in (
-            "source_url", "company", "client_name", "budget_min", "budget_max", "currency",
-            "employment_type", "estimated_hours", "remote", "country", "languages", "skills",
-            "technologies", "published_at", "apply_mode",
+            "source_url",
+            "company",
+            "client_name",
+            "budget_min",
+            "budget_max",
+            "currency",
+            "employment_type",
+            "estimated_hours",
+            "remote",
+            "country",
+            "languages",
+            "skills",
+            "technologies",
+            "published_at",
+            "apply_mode",
         ):
             setattr(opportunity, field, getattr(raw, field))
+        opportunity.provider_metadata = dict(raw.metadata.get("provider_metadata") or {})
+        opportunity.external_ai_allowed = bool(raw.metadata.get("external_ai_allowed", True))
 
     @staticmethod
     def _log_classification(raw: RawOpportunity, classification: ContentClassification) -> None:

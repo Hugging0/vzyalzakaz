@@ -104,10 +104,7 @@ class UserMatchAnalyzer:
         comparable_max = facts.normalized_budget_max_rub
         if comparable_max is None and facts.currency == "RUB":
             comparable_max = facts.budget_max
-        if (
-            comparable_max is not None
-            and comparable_max < profile.economics.minimum_project_rub
-        ):
+        if comparable_max is not None and comparable_max < profile.economics.minimum_project_rub:
             failures.append("budget_below_floor")
 
         candidate_languages = {
@@ -151,6 +148,7 @@ class UserMatchAnalyzer:
         )
         if (
             allow_llm_rerank
+            and opportunity.external_ai_allowed
             and self.settings.matching_llm_rerank_enabled
             and self.client.available
             and analysis.rank_score >= self.settings.matching_llm_rerank_threshold
@@ -193,8 +191,7 @@ Return only JSON matching: {schema}
             rerank = RerankResult.model_validate(result)
             evidence = [*rerank.why_recommended, *rerank.checks]
             if not all(
-                set(item.source_facts) <= allowed_source
-                and set(item.profile_facts) <= allowed_profile
+                set(item.source_facts) <= allowed_source and set(item.profile_facts) <= allowed_profile
                 for item in evidence
             ):
                 raise ValueError("reranker returned unknown evidence references")
@@ -231,9 +228,7 @@ def deterministic_match(
     primary_keys = {_key(value): value for value in primary}
     secondary_keys = {_key(value): value for value in secondary}
     direct_keys = set(requested_by_key) & (set(primary_keys) | set(secondary_keys))
-    requested_concepts = fallback_concepts(
-        " ".join([facts.title, *requested, *facts.deliverables])
-    )
+    requested_concepts = fallback_concepts(" ".join([facts.title, *requested, *facts.deliverables]))
     profile_concepts = fallback_concepts(" ".join([*primary, *secondary, profile.candidate.about]))
     transferable_concepts = sorted(
         (requested_concepts & profile_concepts) - fallback_concepts(" ".join(direct_keys))
@@ -246,9 +241,7 @@ def deterministic_match(
     )
     profile_text = " ".join([profile.candidate.about, *primary, *secondary])
     semantic = (
-        retrieval_score
-        if retrieval_score is not None
-        else lexical_similarity(profile_text, opportunity_text)
+        retrieval_score if retrieval_score is not None else lexical_similarity(profile_text, opportunity_text)
     )
     skill_score = (
         45.0
@@ -258,9 +251,7 @@ def deterministic_match(
 
     portfolio_scores = [
         (
-            lexical_similarity(
-                f"{item.title} {item.description} {' '.join(item.skills)}", opportunity_text
-            ),
+            lexical_similarity(f"{item.title} {item.description} {' '.join(item.skills)}", opportunity_text),
             item,
         )
         for item in portfolio
@@ -291,14 +282,11 @@ def deterministic_match(
     }
     if embedding_score is not None:
         features["embedding_similarity"] = round(embedding_score, 2)
-    score = _clamp(
-        sum(features[key] * weight for key, weight in RANKING_POLICY.weights.items())
-    )
+    score = _clamp(sum(features[key] * weight for key, weight in RANKING_POLICY.weights.items()))
     missing = [
         requested_by_key[key]
         for key in requested_by_key
-        if key not in direct_keys
-        and not (fallback_concepts(requested_by_key[key]) & profile_concepts)
+        if key not in direct_keys and not (fallback_concepts(requested_by_key[key]) & profile_concepts)
     ]
     why = _why_recommended(
         facts,
@@ -475,10 +463,10 @@ def _checks(
                     source_facts=[f"opportunity.risk_flags:{risk}"],
                 )
             )
-    if (
-        (facts.budget_min is not None or facts.budget_max is not None)
-        and facts.fx_status not in {"normalized", "same_currency"}
-    ):
+    if (facts.budget_min is not None or facts.budget_max is not None) and facts.fx_status not in {
+        "normalized",
+        "same_currency",
+    }:
         checks.append(
             MatchEvidence(
                 text="Бюджет указан, но курс для сравнения недоступен — проверьте деньги вручную.",
@@ -630,8 +618,7 @@ def _allowed_references(
         f"profile.preferred.remote:{str(profile.preferred.remote).lower()}",
     }
     profile_refs.update(
-        f"profile.skills:{item}"
-        for item in [*profile.candidate.skills, *profile.candidate.secondary_skills]
+        f"profile.skills:{item}" for item in [*profile.candidate.skills, *profile.candidate.secondary_skills]
     )
     profile_refs.update(f"profile.portfolio:{item.slug}" for item in portfolio)
     return source, profile_refs

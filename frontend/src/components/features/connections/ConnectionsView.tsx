@@ -1,12 +1,15 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, Clock3, Copy, Download, PlugZap, Puzzle, Unplug } from "lucide-react";
+import { AlertTriangle, BriefcaseBusiness, Check, Clock3, Copy, Download, PlugZap, Puzzle, RefreshCw, Unplug } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { AppBadge } from "@/components/ui/AppBadge";
 import { AppButton } from "@/components/ui/AppButton";
 import { AppCard } from "@/components/ui/AppCard";
+import { AppCheckbox } from "@/components/ui/AppCheckbox";
+import { AppField } from "@/components/ui/AppField";
 import { AppLinkButton } from "@/components/ui/AppLinkButton";
 import { AppNotice } from "@/components/ui/AppNotice";
 import { AppPageHeader } from "@/components/ui/AppPageHeader";
@@ -14,7 +17,7 @@ import { AppSegmentedControl } from "@/components/ui/AppSegmentedControl";
 import { AppEmptyState, FeedSkeleton } from "@/components/ui/States";
 import { miniAppApi } from "@/lib/api/client";
 import { contactExtension } from "@/lib/extension/bridge";
-import type { SourceConnection } from "@/types/domain";
+import type { HHConnection, SourceConnection } from "@/types/domain";
 
 const statusCopy: Record<SourceConnection["connectionStatus"], string> = { connected: "Подключено", syncing: "Синхронизация", attention: "Нужно внимание", available: "Можно подключить", planned: "Запланировано" };
 const submissionCopy: Record<SourceConnection["submissionType"], string> = { manual: "Ручная отправка", api: "API", browser_extension: "Заполнение в браузере" };
@@ -30,11 +33,15 @@ const capabilityCopy: Record<SourceConnection["capabilities"][number], string> =
 
 export function ConnectionsView() {
   const client = useQueryClient();
+  const searchParams = useSearchParams();
   const query = useQuery({ queryKey: ["sources"], queryFn: miniAppApi.sources });
   const extension = useQuery({ queryKey: ["extension-status"], queryFn: miniAppApi.extensionStatus, refetchInterval: 15_000 });
+  const hh = useQuery({ queryKey: ["hh-connection"], queryFn: miniAppApi.hhConnection });
   const [filter, setFilter] = useState<"active" | "extension" | "all">("active");
   const [linkCode, setLinkCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [hhAgreement, setHHAgreement] = useState(false);
+  const hhReturn = searchParams.get("hh");
   const createLink = useMutation({
     mutationFn: miniAppApi.createExtensionLink,
     onSuccess: async ({ code }) => {
@@ -50,9 +57,26 @@ export function ConnectionsView() {
     mutationFn: miniAppApi.disconnectExtension,
     onSuccess: () => client.invalidateQueries({ queryKey: ["extension-status"] }),
   });
+  const connectHH = useMutation({
+    mutationFn: () => miniAppApi.startHHOAuth(hhAgreement),
+    onSuccess: ({ authorizeUrl }) => window.location.assign(authorizeUrl),
+  });
+  const refreshHH = useMutation({
+    mutationFn: miniAppApi.refreshHHResumes,
+    onSuccess: () => client.invalidateQueries({ queryKey: ["hh-connection"] }),
+  });
+  const selectResume = useMutation({
+    mutationFn: miniAppApi.selectHHResume,
+    onSuccess: () => client.invalidateQueries({ queryKey: ["hh-connection"] }),
+  });
+  const disconnectHH = useMutation({
+    mutationFn: miniAppApi.disconnectHH,
+    onSuccess: () => client.invalidateQueries({ queryKey: ["hh-connection"] }),
+  });
 
-  if (query.isLoading) return <FeedSkeleton />;
+  if (query.isLoading || hh.isLoading) return <FeedSkeleton />;
   const sources = (query.data ?? []).filter((source) => {
+    if (source.name === "hh_ru") return false;
     if (filter === "all") return true;
     if (filter === "extension") return source.submissionType === "browser_extension";
     return source.enabled;
@@ -60,6 +84,20 @@ export function ConnectionsView() {
   return (
     <>
       <AppPageHeader title="Площадки" description="Поиск заказов и подготовка откликов." />
+      <HHConnectionCard
+        connection={hh.data}
+        agreement={hhAgreement}
+        busy={connectHH.isPending || refreshHH.isPending || selectResume.isPending || disconnectHH.isPending}
+        onAgreement={setHHAgreement}
+        onConnect={() => connectHH.mutate()}
+        onRefresh={() => refreshHH.mutate()}
+        onSelect={(id) => selectResume.mutate(id)}
+        onDisconnect={() => disconnectHH.mutate()}
+      />
+      {hhReturn === "connected" && <AppNotice tone="success">HH подключён. Проверьте основное резюме.</AppNotice>}
+      {hhReturn === "cancelled" && <AppNotice tone="warning">Подключение HH отменено.</AppNotice>}
+      {hhReturn === "error" && <AppNotice tone="danger">HH не удалось подключить. Начните ещё раз.</AppNotice>}
+      {(hh.isError || connectHH.isError || refreshHH.isError || selectResume.isError || disconnectHH.isError) && <AppNotice tone="danger">Не удалось обновить подключение HH.</AppNotice>}
       <ExtensionConnectionCard
         state={extension.data?.state}
         installationId={extension.data?.installations[0]?.id}
@@ -87,6 +125,51 @@ export function ConnectionsView() {
         <div className="connection-list">{sources.map((source) => <SourceCard key={source.name} source={source} />)}</div>
       ) : <AppEmptyState title="Здесь пока пусто" text="Площадки появятся после настройки источников." />}
     </>
+  );
+}
+
+function HHConnectionCard({ connection, agreement, busy, onAgreement, onConnect, onRefresh, onSelect, onDisconnect }: {
+  connection?: HHConnection;
+  agreement: boolean;
+  busy: boolean;
+  onAgreement: (value: boolean) => void;
+  onConnect: () => void;
+  onRefresh: () => void;
+  onSelect: (id: string) => void;
+  onDisconnect: () => void;
+}) {
+  const connected = connection?.status === "connected";
+  const needsAuth = connection?.status === "reauth_required";
+  const hasError = connection?.status === "error";
+  return (
+    <AppCard tone={connected ? "mint" : needsAuth ? "yellow" : hasError ? "pink" : "blue"} className="extension-connect-card">
+      <div className="connection-icon" data-status={connected ? "connected" : needsAuth || hasError ? "attention" : "available"}><BriefcaseBusiness size={22} /></div>
+      <div>
+        <div className="connection-title"><h2>HH</h2><AppBadge tone={connected ? "mint" : needsAuth || hasError ? "pink" : "blue"}>{connected ? "Подключено" : needsAuth ? "Нужен вход" : hasError ? "Ошибка" : "Не подключено"}</AppBadge></div>
+        <p>{connected ? `Аккаунт ${connection.accountName || "подключён"}.` : "Официальный API для поиска и отправки откликов."}</p>
+        {connected ? (
+          <>
+            <AppField label="Основное резюме" htmlFor="hh-resume">
+              <select id="hh-resume" className="app-input" value={connection.selectedResumeId ?? ""} disabled={busy} onChange={(event) => onSelect(event.target.value)}>
+                <option value="" disabled>Выберите резюме</option>
+                {connection.resumes.map((resume) => <option key={resume.id} value={resume.id}>{resume.title}</option>)}
+              </select>
+            </AppField>
+            {!connection.resumes.length && <AppNotice tone="warning">В аккаунте нет доступных резюме.</AppNotice>}
+            <div className="inline-actions">
+              <AppButton variant="ghost" disabled={busy} onClick={onRefresh}><RefreshCw size={18} /> Обновить</AppButton>
+              <AppButton variant="danger" disabled={busy} onClick={onDisconnect}><Unplug size={18} /> Отключить</AppButton>
+            </div>
+          </>
+        ) : (
+          <>
+            <AppCheckbox checked={agreement} onChange={onAgreement} label={<span>Принимаю <a href="https://hh.ru/account/agreement" target="_blank" rel="noreferrer">соглашение об оказании услуг по содействию в трудоустройстве</a>.</span>} />
+            <AppButton disabled={busy || !agreement || !connection?.configured} onClick={onConnect}>{busy ? "Открываем HH…" : needsAuth || hasError ? "Подключить снова" : "Подключить HH"}</AppButton>
+            {!connection?.configured && <AppNotice tone="warning">Владелец сервиса ещё не настроил HH OAuth.</AppNotice>}
+          </>
+        )}
+      </div>
+    </AppCard>
   );
 }
 

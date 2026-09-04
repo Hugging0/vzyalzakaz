@@ -22,9 +22,14 @@ class CandidateAssistant:
         self.llm = ChatCompletionClient(settings)
 
     async def generate_proposal(
-        self, raw: RawOpportunity, analysis: dict[str, Any], portfolio: PortfolioProject | None
+        self,
+        raw: RawOpportunity,
+        analysis: dict[str, Any],
+        portfolio: PortfolioProject | None,
+        *,
+        allow_llm: bool = True,
     ) -> str:
-        if not self.llm.available:
+        if not allow_llm or not self.llm.available:
             return self._deterministic_proposal(raw, analysis, portfolio)
         prompt = self._proposal_prompt(raw, analysis, portfolio)
         try:
@@ -141,8 +146,7 @@ def _deterministic_profile_intake(text: str) -> ProfileIntake:
         if any(alias in normalized for alias in aliases):
             specialties.append(name)
     rub_values = [
-        int(value.replace(" ", ""))
-        for value in re.findall(r"(\d[\d ]{2,8})\s*(?:₽|руб|rub)", normalized)
+        int(value.replace(" ", "")) for value in re.findall(r"(\d[\d ]{2,8})\s*(?:₽|руб|rub)", normalized)
     ]
     return ProfileIntake(
         skills=skills,

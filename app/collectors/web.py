@@ -7,7 +7,8 @@ from xml.etree import ElementTree
 from bs4 import BeautifulSoup
 
 from app.collectors.base import JobSource
-from app.config import SourceConfig
+from app.config import AppSettings, SourceConfig
+from app.integrations.hh.collector import HHCollector
 from app.schemas import RawOpportunity
 
 
@@ -24,49 +25,6 @@ def _date(value: str | int | float | None) -> datetime | None:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except (ValueError, AttributeError):
         return None
-
-
-class HHSource(JobSource):
-    async def fetch_new(self) -> list[RawOpportunity]:
-        data = await self.get_json(
-            self.config.url or "https://api.hh.ru/vacancies",
-            params={
-                "text": self.config.options.get("query", "Python OR automation OR LLM"),
-                "period": 1,
-                "per_page": self.config.options.get("limit", 50),
-                "order_by": "publication_time",
-            },
-        )
-        items = data.get("items", []) if isinstance(data, dict) else []
-        results = []
-        for item in items:
-            snippet = item.get("snippet") or {}
-            requirement = _text(snippet.get("requirement"))
-            responsibility = _text(snippet.get("responsibility"))
-            results.append(
-                RawOpportunity(
-                    source=self.config.name,
-                    source_type="web",
-                    external_id=str(item["id"]),
-                    title=item.get("name", ""),
-                    description=f"{requirement} {responsibility}".strip(),
-                    raw_text=f"{item.get('name', '')}\n{requirement}\n{responsibility}",
-                    source_url=item.get("alternate_url"),
-                    company=(item.get("employer") or {}).get("name"),
-                    budget_min=(item.get("salary") or {}).get("from"),
-                    budget_max=(item.get("salary") or {}).get("to"),
-                    currency=(
-                        "RUB"
-                        if (item.get("salary") or {}).get("currency") == "RUR"
-                        else (item.get("salary") or {}).get("currency")
-                    ),
-                    employment_type=(item.get("schedule") or {}).get("name"),
-                    remote=(item.get("schedule") or {}).get("id") == "remote",
-                    published_at=_date(item.get("published_at")),
-                    apply_mode=self.config.apply_mode,
-                )
-            )
-        return results
 
 
 class RemotiveSource(JobSource):
@@ -175,9 +133,7 @@ class HackerNewsSource(JobSource):
             if not body:
                 continue
             normalized = body.lower()
-            keywords = self.config.options.get(
-                "keywords", ["python", "ai", "llm", "automation"]
-            )
+            keywords = self.config.options.get("keywords", ["python", "ai", "llm", "automation"])
             if not any(word.lower() in normalized for word in keywords):
                 continue
             object_id = str(hit.get("id"))
@@ -242,9 +198,7 @@ class JobicySource(JobSource):
         for key in ("industry", "geo", "tag"):
             if value := self.config.options.get(key):
                 params[key] = value
-        data = await self.get_json(
-            self.config.url or "https://jobicy.com/api/v2/remote-jobs", params=params
-        )
+        data = await self.get_json(self.config.url or "https://jobicy.com/api/v2/remote-jobs", params=params)
         jobs = data.get("jobs", []) if isinstance(data, dict) else []
         return [
             RawOpportunity(
@@ -303,8 +257,7 @@ class HimalayasSource(JobSource):
 class FreelancerSource(JobSource):
     async def fetch_new(self) -> list[RawOpportunity]:
         data = await self.get_json(
-            self.config.url
-            or "https://www.freelancer.com/api/projects/0.1/projects/active/",
+            self.config.url or "https://www.freelancer.com/api/projects/0.1/projects/active/",
             params={
                 "limit": min(int(self.config.options.get("limit", 50)), 100),
                 "full_description": "true",
@@ -353,9 +306,7 @@ class FreelancerSource(JobSource):
 
 class WorkingNomadsSource(JobSource):
     async def fetch_new(self) -> list[RawOpportunity]:
-        data = await self.get_json(
-            self.config.url or "https://www.workingnomads.com/api/exposed_jobs/"
-        )
+        data = await self.get_json(self.config.url or "https://www.workingnomads.com/api/exposed_jobs/")
         jobs = data if isinstance(data, list) else []
         limit = int(self.config.options.get("limit", 100))
         return [
@@ -444,9 +395,7 @@ class GenericRSSSource(JobSource):
             except (TypeError, ValueError):
                 published_at = None
             categories = [
-                _text(category.text)
-                for category in item.findall("category")
-                if _text(category.text)
+                _text(category.text) for category in item.findall("category") if _text(category.text)
             ]
             raw_text = f"{title}\n{description}"
             normalized = raw_text.lower()
@@ -473,7 +422,7 @@ class GenericRSSSource(JobSource):
 
 
 COLLECTOR_REGISTRY: dict[str, type[JobSource]] = {
-    "hh": HHSource,
+    "hh": HHCollector,
     "remotive": RemotiveSource,
     "remoteok": RemoteOKSource,
     "arbeitnow": ArbeitnowSource,
@@ -488,9 +437,9 @@ COLLECTOR_REGISTRY: dict[str, type[JobSource]] = {
 }
 
 
-def create_collector(config: SourceConfig) -> JobSource:
+def create_collector(config: SourceConfig, settings: AppSettings | None = None) -> JobSource:
     try:
         collector_class = COLLECTOR_REGISTRY[config.collector]
     except KeyError as exc:
         raise ValueError(f"Unknown web collector: {config.collector}") from exc
-    return collector_class(config)
+    return collector_class(config, settings)

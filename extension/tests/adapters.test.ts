@@ -28,7 +28,7 @@ describe("marketplace adapter registry", () => {
     expect(adapterForUrl(new URL("https://www.freelancer.com/projects/1"))?.id).toBe("freelancer_com");
     expect(adapterForUrl(new URL("https://freelancer.com.evil.example/projects/1"))).toBeNull();
     expect(adapterForUrl(new URL("http://freelancer.com/projects/1"))).toBeNull();
-    expect(adapters.map((adapter) => adapter.id)).toEqual(["freelancer_com", "freelance_ru", "fl_ru", "kwork_projects"]);
+    expect(adapters.map((adapter) => adapter.id)).toEqual(["freelancer_com", "freelance_ru", "fl_ru", "kwork_projects", "hh"]);
   });
 
   it("keeps source-specific selectors inside its adapter", () => {

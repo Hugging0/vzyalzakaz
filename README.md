@@ -133,6 +133,36 @@ Bot API, Web/PWA, база и LLM через этот прокси не марш
 Стартовый backfill ограничен последними 30 сообщениями Tier A, 15 сообщениями
 Tier B и 10 сообщениями Tier C; значения редактируются через `backfill_limit`.
 
+## HeadHunter
+
+1. Зарегистрируйте приложение в [кабинете разработчика HH](https://dev.hh.ru).
+2. Укажите callback URL без вариантов и завершающего slash:
+   `https://vzyalzakaz.ru/api/integrations/hh/oauth/callback`.
+3. Получите client ID и client secret. Создайте отдельный ключ шифрования токенов:
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+4. Добавьте в production secrets:
+
+```dotenv
+HH_CLIENT_ID=...
+HH_CLIENT_SECRET=...
+HH_TOKEN_ENCRYPTION_KEY=...
+HH_USER_AGENT=VzyalZakaz/0.1 (support@vzyalzakaz.ru)
+HH_ALLOW_EXTERNAL_LLM=false
+```
+
+5. После deploy подключите тестовый аккаунт в `/app/connections`, проверьте список резюме,
+   обычный отклик и вакансию с обязательным тестом. Затем включите `hh_ru` в
+   `config/sources.yaml` и проверьте collector run.
+
+Условия HH требуют явного действия пользователя и запрещают передачу полученных API-данных
+сторонним сервисам. Поэтому массовый auto-submit отсутствует, токены зашифрованы, а extraction,
+matching и proposal для HH выполняются локальными deterministic fallback-механизмами. Не
+включайте `HH_ALLOW_EXTERNAL_LLM` без письменного согласования с HH.
+
 ### Бот для уведомлений
 
 1. Создайте бота через `@BotFather` и получите token.
@@ -258,14 +288,15 @@ credentials, production HTTPS `PUBLIC_BASE_URL`, назначить webhook в �
 
 Для временного отключения источника установите `enabled: false` и перезапустите
 контейнер. Tier A/B/C сейчас выражен через `poll_interval`; Telegram работает по событиям.
-HH.ru adapter включён в код, но в стартовом конфиге отключён: API HH.ru не отвечает
-из текущей сети. Когда `curl https://api.hh.ru/vacancies` начнёт отвечать, поменяйте
-для `hh_ru` значение на `enabled: true`.
+HH.ru adapter реализован через официальный API, но в стартовом конфиге отключён до установки
+credentials, принятия условий и production smoke-test. После проверки поменяйте для `hh_ru`
+значение на `enabled: true`.
 
 ## Политика откликов
 
 - Telegram: после APPROVE бот показывает черновик и кнопку перехода к явно указанному контакту.
-- Job boards / marketplaces: черновик и ссылка на страницу отклика.
+- HH: официальный OAuth/API после явного клика; тесты и анкеты продолжаются в браузере.
+- Остальные job boards / marketplaces: черновик и ссылка либо заполнение через расширение.
 - CAPTCHA, authentication и anti-bot protection приложение не обходит.
 - Общий MTProto account используется только для чтения каналов. Он никогда не
   отправляет сообщения от имени пользователей сервиса.
@@ -292,6 +323,8 @@ HH.ru adapter включён в код, но в стартовом конфиг�
 - `/api/app/portfolio`, `/api/app/analytics`, `/api/app/billing`.
 - `/api/app/extension/*` — link-ticket, состояние и отключение расширения;
 - `/api/app/leads/{id}/application-command` — постановка и чтение команды отклика;
+- `GET|POST /api/app/leads/{id}/application` — единый workflow API/extension/manual;
+- `/api/app/connections/hh/*` — HH OAuth, состояние подключения и выбор резюме;
 - `/api/extension/*` — собственная token-сессия, heartbeat, команды и безопасная диагностика расширения.
 
 Внешний Nginx проксирует `/api/mini-app/*`, `/api/web/*` и `/api/app/*` вместе с PWA.

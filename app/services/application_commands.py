@@ -94,7 +94,15 @@ def source_for_application(
     job_url: str | None,
 ) -> SourceConfig:
     source = next((item for item in settings.load_sources() if item.name == source_id), None)
-    if source is None or source.submission_type != "browser_extension":
+    supports_extension = source is not None and (
+        source.submission_type == "browser_extension"
+        or (
+            source.application_provider == "hh"
+            and source.adapter_id == "hh"
+            and "browser_autofill" in source.capabilities
+        )
+    )
+    if not supports_extension:
         raise HTTPException(409, "Для этой площадки расширение пока недоступно")
     if not ({"autofill", "browser_autofill"} & set(source.capabilities)):
         raise HTTPException(409, "Площадка не разрешает автозаполнение")
@@ -333,8 +341,6 @@ def command_payload(command: ApplicationCommand) -> dict:
         "expiresAt": command.expires_at.isoformat(),
         "result": result,
         "error": (
-            {"code": command.error_code, "message": command.error_detail}
-            if command.error_code
-            else None
+            {"code": command.error_code, "message": command.error_detail} if command.error_code else None
         ),
     }

@@ -68,7 +68,8 @@ Production scheduler опрашивает 16 Web / API / RSS-источнико�
 
 ## Включённые Web / API / RSS-источники
 
-Для всех внешних сайтов поддерживается только подготовка черновика отклика.
+Для внешних сайтов по умолчанию поддерживается подготовка черновика. HH использует отдельный
+официальный API-flow после подключения аккаунта; остальные площадки сохраняют прежний режим.
 
 | № | Техническое имя | Тип | Категория / endpoint | Интервал по конфигурации |
 |---:|---|---|---|---:|
@@ -89,11 +90,24 @@ Production scheduler опрашивает 16 Web / API / RSS-источнико�
 | 48 | `work_with_indies` | RSS | Indie game development | 1 час |
 | 49 | `coroflot` | RSS | Design / creative jobs | 6 часов |
 
+### HeadHunter
+
+`hh_ru` реализован через официальный `api.hh.ru`: поиск с пагинацией и коротким incremental
+window, загрузка полной карточки, нормализация и deduplication в общем Opportunity pipeline.
+Запросы сбора глобальны и не используют профиль конкретного пользователя; personalization
+начинается после persist. Источник оставлен `enabled: false` до регистрации приложения владельцем
+и ручной проверки production quota/policy.
+
+OAuth даёт пользователю выбрать своё резюме и отправить подтверждённый отклик через API.
+Обязательные тесты и внешние действия переходят в browser-extension fallback. Данные HH по
+умолчанию исключены из внешнего LLM (`HH_ALLOW_EXTERNAL_LLM=false`) согласно действующим
+условиям API.
+
 ## Отключённые источники
 
 | Техническое имя | Источник | Причина / статус |
 |---|---|---|
-| `hh_ru` | HeadHunter API | Отключён в конфигурации |
+| `hh_ru` | HeadHunter API | Реализован; ждёт credentials, policy approval и production smoke-test |
 | `remotive` | Remotive, Python/automation | HTTP 403 с production VPS |
 | `remotive_design` | Remotive, design | HTTP 403 с production VPS |
 | `remotive_marketing` | Remotive, marketing | HTTP 403 с production VPS |

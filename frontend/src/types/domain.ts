@@ -138,6 +138,34 @@ export interface ApplicationCommand {
   error: { code: string; message: string | null } | null;
 }
 
+export interface ApplicationAction {
+  provider: "hh" | "browser_extension" | "manual";
+  status: "ready" | "connection_required" | "resume_required" | "proposal_required" | "processing" | "submitted" | "already_applied" | "external_action_required" | "failed" | "uncertain" | "manual_only" | ApplicationCommandStatus;
+  title: string;
+  message: string;
+  external_url: string | null;
+  resume_title: string | null;
+  command: ApplicationCommand | null;
+  error_code: string | null;
+}
+
+export interface HHResume {
+  id: string;
+  title: string;
+  status: string;
+  url: string | null;
+  updatedAt: string | null;
+}
+
+export interface HHConnection {
+  configured: boolean;
+  status: "not_connected" | "connected" | "reauth_required" | "error";
+  accountName: string | null;
+  resumes: HHResume[];
+  selectedResumeId: string | null;
+  lastErrorCode: string | null;
+}
+
 export interface BillingStatus {
   available: boolean;
   checkout_available: boolean;

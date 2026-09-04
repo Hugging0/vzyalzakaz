@@ -1,9 +1,11 @@
+import type { ReactNode } from "react";
+
 export function AppCheckbox({
   label,
   checked,
   onChange,
 }: {
-  label: string;
+  label: ReactNode;
   checked: boolean;
   onChange: (checked: boolean) => void;
 }) {

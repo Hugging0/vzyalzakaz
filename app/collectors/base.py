@@ -6,15 +6,16 @@ from abc import ABC, abstractmethod
 
 import httpx
 
-from app.config import SourceConfig
+from app.config import AppSettings, SourceConfig, get_settings
 from app.schemas import RawOpportunity
 
 logger = logging.getLogger(__name__)
 
 
 class JobSource(ABC):
-    def __init__(self, config: SourceConfig):
+    def __init__(self, config: SourceConfig, settings: AppSettings | None = None):
         self.config = config
+        self.settings = settings or get_settings()
 
     @abstractmethod
     async def fetch_new(self) -> list[RawOpportunity]:

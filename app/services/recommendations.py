@@ -110,8 +110,7 @@ class RecommendationService:
         if self.settings.registration_mode == "closed":
             return False
         return bool(
-            self.settings.registration_invite_code
-            and invite_code == self.settings.registration_invite_code
+            self.settings.registration_invite_code and invite_code == self.settings.registration_invite_code
         )
 
     def profile_for(self, user: TelegramUser) -> CandidateProfile:
@@ -133,9 +132,9 @@ class RecommendationService:
         intake = await CandidateAssistant(self.settings, profile).extract_profile(text)
         profile.candidate.about = text.strip()[:6000]
         profile.candidate.skills = list(dict.fromkeys([*profile.candidate.skills, *intake.skills]))[:100]
-        profile.candidate.languages = list(
-            dict.fromkeys([*profile.candidate.languages, *intake.languages])
-        )[:10]
+        profile.candidate.languages = list(dict.fromkeys([*profile.candidate.languages, *intake.languages]))[
+            :10
+        ]
         if minimum_budget is not None:
             profile.economics.minimum_project_rub = minimum_budget
         elif intake.minimum_project_rub is not None:
@@ -168,9 +167,8 @@ class RecommendationService:
         *,
         allow_llm_rerank: bool = True,
     ) -> UserOpportunity | None:
-        if (
-            opportunity.status == OpportunityStatus.FILTERED
-            or not is_demand_category(opportunity.content_category)
+        if opportunity.status == OpportunityStatus.FILTERED or not is_demand_category(
+            opportunity.content_category
         ):
             return None
         existing = await session.scalar(
@@ -400,7 +398,10 @@ class RecommendationService:
             None,
         )
         proposal = await CandidateAssistant(self.settings, profile).generate_proposal(
-            _to_raw(opportunity), match.analysis, portfolio
+            _to_raw(opportunity),
+            match.analysis,
+            portfolio,
+            allow_llm=opportunity.external_ai_allowed,
         )
         match.proposal = proposal
         match.status = OpportunityStatus.APPROVED
@@ -425,7 +426,11 @@ class RecommendationService:
             latency_ms=opportunity.classification_latency_ms or 0,
             version=opportunity.classification_version or "intent-v1",
         )
-        facts = await self.fact_extractor.extract(_to_raw(opportunity), classification)
+        facts = await self.fact_extractor.extract(
+            _to_raw(opportunity),
+            classification,
+            allow_llm=opportunity.external_ai_allowed,
+        )
         opportunity.facts = facts.model_dump(mode="json")
         opportunity.facts_version = FACTS_VERSION
         await session.flush()
@@ -486,9 +491,7 @@ class RecommendationService:
         match.feature_vector = features
         match.explanation = {
             "strength_label": analysis.strength_label,
-            "dimensions": {
-                key: value.model_dump(mode="json") for key, value in analysis.dimensions.items()
-            },
+            "dimensions": {key: value.model_dump(mode="json") for key, value in analysis.dimensions.items()},
             "why_recommended": [item.model_dump(mode="json") for item in analysis.why_recommended],
             "checks": [item.model_dump(mode="json") for item in analysis.checks],
             "retrieval": {
@@ -529,4 +532,8 @@ def _to_raw(opportunity: Opportunity) -> RawOpportunity:
         published_at=opportunity.published_at,
         edited_at=opportunity.edited_at,
         apply_mode=opportunity.apply_mode,
+        metadata={
+            "provider_metadata": opportunity.provider_metadata,
+            "external_ai_allowed": opportunity.external_ai_allowed,
+        },
     )

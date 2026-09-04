@@ -86,7 +86,27 @@ export const kworkAdapter = createMarketplaceAdapter({
   capabilities: [...safeCapabilities, "attachments"],
 });
 
-export const adapters = [freelancerAdapter, freelanceRuAdapter, flRuAdapter, kworkAdapter] as const;
+export const hhAdapter = createMarketplaceAdapter({
+  id: "hh",
+  displayName: "HH",
+  version: "1.0.0",
+  hosts: ["hh.ru"],
+  jobPaths: [/^\/vacancy\//i],
+  loginPaths: [/^\/account\/login/i, /^\/login/i],
+  authSelectors: ["[data-qa='mainmenu_applicantProfile']", "a[href*='/applicant/resumes']"],
+  unauthSelectors: ["form[action*='login']", "[data-qa='login']", "a[href*='/account/login']"],
+  formSelectors: ["form[data-qa*='vacancy-response' i]", "[data-qa='vacancy-response-popup'] form", "form[action*='negotiation']"],
+  applySelectors: ["[data-qa='vacancy-response-link-top']", "[data-qa='vacancy-response-link-bottom']", "[data-qa='vacancy-response-link']"],
+  applyLabels: [/откликнуться/i, /respond/i],
+  successSelectors: ["[data-qa='vacancy-response-link-view-topic']", "[data-qa='vacancy-response-success']"],
+  successLabels: [/отклик\s+отправлен/i, /вы\s+откликнулись/i, /response\s+sent/i],
+  fields: [
+    { key: "cover_letter", title: "Сопроводительное письмо", selectors: ["textarea[data-qa*='response' i]", "textarea[name='message']"], labels: [] },
+  ],
+  capabilities: safeCapabilities,
+});
+
+export const adapters = [freelancerAdapter, freelanceRuAdapter, flRuAdapter, kworkAdapter, hhAdapter] as const;
 
 export function adapterForUrl(url: URL) {
   return adapters.find((adapter) => adapter.supports(url)) ?? null;

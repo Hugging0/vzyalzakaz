@@ -52,16 +52,17 @@ recommended -> approved -> contacted -> replied -> interview -> won
 
 `contacted` невозможен без сохранённого отклика. UI показывает завершённое действие только после успешного ответа API. Ручные callback-сценарии Telegram не должны менять статус в обход workflow.
 
-## Источники и Browser Extension
+## Источники и отправка отклика
 
 `SourceConfig` является source of truth:
 
 - `submission_type`: `manual`, `api`, `browser_extension`;
+- `application_provider`: серверный provider официального API или browser extension;
 - `capabilities`: `collect`, `quick_apply`, `browser_autofill`, `attachments`, `custom_questions`, `requires_auth`, `requires_confirmation`;
 - `adapter_id` и `application_hosts`: идентификатор адаптера и строгий allowlist доменов;
 - `apply_mode`: существующее серверное ограничение отправки.
 
-`GET /api/app/sources` отдаёт нормализованные capabilities и connection status. UI только отображает контракт и не определяет возможности по имени площадки. Адаптеры `Freelancer`, `Freelance.ru`, `FL.ru` и `Kwork` реализованы в extension; сбор заказов с трёх последних остаётся выключенным до отдельной проверки collectors.
+`GET /api/app/sources` отдаёт нормализованные capabilities и connection status. UI только отображает контракт и не определяет возможности по имени площадки. `GET|POST /api/app/leads/{id}/application` одинаково обслуживает официальный HH API, расширение и ручной fallback. HH OAuth и выбор резюме живут в `/api/app/connections/hh/*`; токены не входят ни в один frontend payload.
 
 Extension соблюдает границы:
 
@@ -71,6 +72,12 @@ Extension соблюдает границы:
 - первая версия не нажимает финальный Submit;
 - результат и ошибка возвращаются в общий `ApplicationEvent`;
 - selectors и adapters живут в extension, а не в Web UI.
+
+Основной HH flow: пользователь подключает аккаунт через OAuth, выбирает резюме, проверяет
+сопроводительное письмо и явно нажимает «Откликнуться». Backend проверяет предыдущий отклик,
+вакансию, выбранное резюме и обязательный тест. Только подтверждение HH переводит запись в
+`contacted`. Тест, анкета или недоступный API-отклик создают `external_action_required` и
+передают подготовку существующему расширению; финальный Submit остаётся ручным.
 
 Одноразовый link-ticket связывает уже авторизованный PWA с отдельной сессией расширения. Токены и link codes хранятся на сервере только как SHA-256 hashes. Команды имеют idempotency key, TTL, владельца и строгий lifecycle. Service worker отправляет heartbeat и забирает задачу каждые 30 секунд через `chrome.alarms`; PWA дополнительно может разбудить установленное расширение после постановки команды. Подробный контракт находится в `docs/BROWSER_EXTENSION_ARCHITECTURE.md`.
 
