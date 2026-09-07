@@ -152,10 +152,11 @@ class AppSettings(BaseSettings):
     matching_llm_rerank_enabled: bool = True
     matching_llm_rerank_threshold: float = Field(default=72, ge=0, le=100)
     matching_llm_rerank_top_k: int = Field(default=8, ge=0, le=50)
-    embedding_provider: Literal["openai_compatible", "disabled"] = "disabled"
+    embedding_provider: Literal["timeweb_yandex", "disabled"] = "disabled"
     embedding_api_key: str | None = None
-    embedding_model: str = "text-embedding-3-small"
-    embedding_base_url: str = "https://api.openai.com/v1"
+    embedding_model: str = "yandex/text-embeddings-v2-doc"
+    embedding_query_model: str = "yandex/text-embeddings-v2-query"
+    embedding_base_url: str = "https://api.timeweb.ai/v1"
     embedding_timeout_seconds: int = Field(default=15, ge=1, le=120)
     embedding_batch_size: int = Field(default=64, ge=1, le=256)
     fx_provider: Literal["cbr", "disabled"] = "cbr"

@@ -57,11 +57,18 @@ Stage A проверяет только user-specific hard constraints: excluded
 remote, office/relocation/full-time/daytime calls, очевидный сопоставимый budget floor и
 невозможный explicit language.
 
-Stage B использует `EmbeddingProvider`. Реализация `OpenAICompatibleEmbeddingProvider`
-работает через `POST /embeddings`; base URL, model, timeout и batch size задаются в
+Stage B использует `EmbeddingProvider`. Реализация `TimewebYandexEmbeddingProvider`
+работает через `POST /embeddings` Timeweb AI Gateway; base URL, doc/query models, timeout и batch size задаются в
 `AppSettings`. Профиль включает about, primary/secondary skills и портфолио. Opportunity input
 строится из нейтральных facts. `SemanticRepresentation` кэширует нормализованные vectors по
 entity, provider, model, retrieval version и input hash:
+
+Профиль использует `yandex/text-embeddings-v2-query`, заказы — `yandex/text-embeddings-v2-doc`.
+Кэш хранит фактическую модель для каждого типа сущности, поэтому смена query-модели
+не переиспользует старые векторы профиля. Timeweb получает отдельный строковый `input`
+для каждого текста: массивы возвращают 503. Клиент сохраняет порядок и возвращает
+пакет только после успешной проверки всех ответов. Прежние настройки провайдеров
+эмбеддингов заменены на `EMBEDDING_PROVIDER=timeweb_yandex`.
 
 - opportunity embedding считается один раз на версию facts/text;
 - profile embedding переиспользуется и меняется при изменении релевантных полей/портфолио;

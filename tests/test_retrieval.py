@@ -21,7 +21,10 @@ class SemanticTestProvider:
         self.fail = False
         self.invalid = False
 
-    async def embed(self, texts: list[str]) -> list[list[float]]:
+    def model_for(self, purpose):
+        return self.model
+
+    async def embed(self, texts: list[str], *, purpose="document") -> list[list[float]]:
         self.calls += 1
         if self.fail:
             raise EmbeddingError("outage")
@@ -149,3 +152,46 @@ def test_common_vacancy_words_do_not_create_false_similarity():
     )
 
     assert score < 5
+
+
+@pytest.mark.asyncio
+async def test_query_and_document_models_are_routed_and_cached_separately(settings, profile):
+    class PairedProvider(SemanticTestProvider):
+        query_model = "query-v1"
+
+        def __init__(self):
+            super().__init__()
+            self.purposes = []
+
+        def model_for(self, purpose):
+            return self.query_model if purpose == "query" else "doc-v1"
+
+        async def embed(self, texts, *, purpose="document"):
+            self.purposes.append(purpose)
+            return await super().embed(texts, purpose=purpose)
+
+    engine = make_engine(settings.database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    provider = PairedProvider()
+    retriever = CandidateRetriever(settings, provider)
+    candidate = make_opportunity("paired", "COBOL mainframe maintenance")
+    async with factory() as session:
+        user = TelegramUser(telegram_user_id=55, profile=profile.model_dump(), portfolio=[])
+        session.add_all([user, candidate[0]])
+        await session.flush()
+        await retriever.retrieve(session, user, profile, [], [candidate])
+        assert provider.purposes == ["query", "document"]
+        await retriever.retrieve(session, user, profile, [], [candidate])
+        assert provider.purposes == ["query", "document"]
+        provider.query_model = "query-v2"
+        await retriever.retrieve(session, user, profile, [], [candidate])
+        assert provider.purposes == ["query", "document", "query"]
+        cache = (await session.scalars(select(SemanticRepresentation))).all()
+        assert {(row.entity_type, row.model) for row in cache} == {
+            ("profile", "query-v1"),
+            ("profile", "query-v2"),
+            ("opportunity", "doc-v1"),
+        }
+    await engine.dispose()

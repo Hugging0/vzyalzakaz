@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Protocol
+from typing import Literal, Protocol
 
 import httpx
 
@@ -12,12 +12,19 @@ class EmbeddingError(RuntimeError):
     pass
 
 
+EmbeddingPurpose = Literal["document", "query"]
+
+
 class EmbeddingProvider(Protocol):
     name: str
     model: str
     available: bool
 
-    async def embed(self, texts: list[str]) -> list[list[float]]: ...
+    def model_for(self, purpose: EmbeddingPurpose) -> str: ...
+
+    async def embed(
+        self, texts: list[str], *, purpose: EmbeddingPurpose = "document"
+    ) -> list[list[float]]: ...
 
 
 class DisabledEmbeddingProvider:
@@ -25,52 +32,72 @@ class DisabledEmbeddingProvider:
     model = "lexical-fallback-v2"
     available = False
 
-    async def embed(self, texts: list[str]) -> list[list[float]]:
+    def model_for(self, purpose: EmbeddingPurpose) -> str:
+        return self.model
+
+    async def embed(
+        self, texts: list[str], *, purpose: EmbeddingPurpose = "document"
+    ) -> list[list[float]]:
         raise EmbeddingError("embedding provider is disabled")
 
 
-class OpenAICompatibleEmbeddingProvider:
-    name = "openai_compatible"
+class TimewebYandexEmbeddingProvider:
+    name = "timeweb_yandex"
 
     def __init__(
         self,
         *,
         api_key: str | None,
         model: str,
+        query_model: str,
         base_url: str,
         timeout_seconds: float,
     ):
         self.api_key = api_key
         self.model = model
+        self.query_model = query_model
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
 
     @property
     def available(self) -> bool:
-        return bool(self.api_key and self.model and self.base_url)
+        return bool(self.api_key and self.model and self.query_model and self.base_url)
 
-    async def embed(self, texts: list[str]) -> list[list[float]]:
+    def model_for(self, purpose: EmbeddingPurpose) -> str:
+        return self.query_model if purpose == "query" else self.model
+
+    async def embed(
+        self, texts: list[str], *, purpose: EmbeddingPurpose = "document"
+    ) -> list[list[float]]:
         if not self.available:
             raise EmbeddingError("embedding provider is not configured")
         if not texts or any(not text.strip() for text in texts):
             raise EmbeddingError("embedding input must contain non-empty text")
         headers = {"Authorization": f"Bearer {self.api_key}"}
+        vectors = []
         try:
             async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-                response = await client.post(
-                    f"{self.base_url}/embeddings",
-                    headers=headers,
-                    json={"model": self.model, "input": texts, "encoding_format": "float"},
-                )
-                response.raise_for_status()
-                payload = response.json()
+                # Yandex via Timeweb accepts a single string per request. Array
+                # inputs return 503, even for two short texts. Keep batch ordering
+                # here and return only after every response has been validated.
+                for text in texts:
+                    response = await client.post(
+                        f"{self.base_url}/embeddings",
+                        headers=headers,
+                        json={"model": self.model_for(purpose), "input": text},
+                    )
+                    response.raise_for_status()
+                    payload = response.json()
+                    data = payload.get("data") if isinstance(payload, dict) else None
+                    if (
+                        not isinstance(data, list)
+                        or len(data) != 1
+                        or not isinstance(data[0], dict)
+                    ):
+                        raise EmbeddingError("embedding response has invalid item count")
+                    vectors.append(data[0].get("embedding"))
         except (httpx.HTTPError, ValueError) as exc:
             raise EmbeddingError("embedding request failed") from exc
-        data = payload.get("data")
-        if not isinstance(data, list) or len(data) != len(texts):
-            raise EmbeddingError("embedding response has invalid item count")
-        ordered = sorted(data, key=lambda item: item.get("index", -1))
-        vectors = [item.get("embedding") for item in ordered]
         return validate_vectors(vectors, expected=len(texts))
 
 
@@ -100,10 +127,11 @@ def validate_vectors(vectors: object, *, expected: int) -> list[list[float]]:
 
 
 def build_embedding_provider(settings: AppSettings) -> EmbeddingProvider:
-    if settings.embedding_provider == "openai_compatible":
-        return OpenAICompatibleEmbeddingProvider(
+    if settings.embedding_provider == "timeweb_yandex":
+        return TimewebYandexEmbeddingProvider(
             api_key=settings.embedding_api_key,
             model=settings.embedding_model,
+            query_model=settings.embedding_query_model,
             base_url=settings.embedding_base_url,
             timeout_seconds=settings.embedding_timeout_seconds,
         )

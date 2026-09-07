@@ -180,17 +180,20 @@ LLM_MODEL=deepseek/deepseek-chat
 
 ## Semantic retrieval и валюты
 
-Primary retrieval подключается к любому OpenAI-compatible `POST /embeddings`:
+Primary retrieval использует Yandex embeddings через Timeweb AI Gateway:
 
 ```dotenv
-EMBEDDING_PROVIDER=openai_compatible
+EMBEDDING_PROVIDER=timeweb_yandex
 EMBEDDING_API_KEY=...
-EMBEDDING_MODEL=text-embedding-3-small
-EMBEDDING_BASE_URL=https://api.openai.com/v1
+EMBEDDING_MODEL=yandex/text-embeddings-v2-doc
+EMBEDDING_QUERY_MODEL=yandex/text-embeddings-v2-query
+EMBEDDING_BASE_URL=https://api.timeweb.ai/v1
 MATCHING_RETRIEVAL_TOP_K=100
 ```
 
-Vectors валидируются и кэшируются; при недоступности API включается детерминированный
+Заказы векторизуются моделью `doc`, профиль поиска — моделью `query`. API получает
+отдельную строку на каждый запрос; пакетные массивы для этой пары не поддерживаются
+шлюзом. Векторы кэшируются отдельно по фактической модели; при недоступности API включается детерминированный
 lexical fallback. Бюджеты USD/EUR и других валют нормализуются через официальный daily
 XML Банка России (`FX_PROVIDER=cbr`). Исходная сумма не заменяется. Неизвестный курс не
 фильтрует заказ, а помечает деньги как требующие проверки. Полный контракт описан в

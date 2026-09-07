@@ -16,6 +16,7 @@ from app.schemas import OpportunityFacts
 from app.services.embeddings import (
     EmbeddingError,
     EmbeddingProvider,
+    EmbeddingPurpose,
     build_embedding_provider,
     validate_vectors,
 )
@@ -155,7 +156,9 @@ class CandidateRetriever:
         cached = await self._cached(session, entity_type, [entity_key], hashes)
         if entity_key in cached:
             return cached[entity_key], True
-        vectors = validate_vectors(await self.provider.embed([text]), expected=1)
+        vectors = validate_vectors(
+            await self.provider.embed([text], purpose=embedding_purpose(entity_type)), expected=1
+        )
         await self._persist_vectors(session, entity_type, [entity_key], hashes, vectors)
         return vectors[0], False
 
@@ -211,7 +214,7 @@ class CandidateRetriever:
                     SemanticRepresentation.entity_type == entity_type,
                     SemanticRepresentation.entity_key.in_(keys),
                     SemanticRepresentation.provider == self.provider.name,
-                    SemanticRepresentation.model == self.provider.model,
+                    SemanticRepresentation.model == self.provider.model_for(embedding_purpose(entity_type)),
                 )
             )
         ).all()
@@ -246,7 +249,7 @@ class CandidateRetriever:
                     SemanticRepresentation.entity_type == entity_type,
                     SemanticRepresentation.entity_key.in_(keys),
                     SemanticRepresentation.provider == self.provider.name,
-                    SemanticRepresentation.model == self.provider.model,
+                    SemanticRepresentation.model == self.provider.model_for(embedding_purpose(entity_type)),
                 )
             )
         ).all()
@@ -264,12 +267,16 @@ class CandidateRetriever:
                         entity_key=key,
                         input_hash=input_hash,
                         provider=self.provider.name,
-                        model=self.provider.model,
+                        model=self.provider.model_for(embedding_purpose(entity_type)),
                         dimensions=len(vector),
                         vector=vector,
                     )
                 )
         await session.flush()
+
+
+def embedding_purpose(entity_type: str) -> EmbeddingPurpose:
+    return "query" if entity_type == "profile" else "document"
 
 
 def profile_retrieval_text(
