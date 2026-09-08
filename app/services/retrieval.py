@@ -4,10 +4,13 @@ import hashlib
 import logging
 import math
 import re
-from collections import Counter
+from collections import Counter, defaultdict, deque
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import CandidateProfile, PortfolioProject
@@ -48,10 +51,35 @@ FALLBACK_CAPABILITY_GROUPS = {
     "data": ("data", "данн", "аналит", "sql", "etl", "bi", "machine learning"),
 }
 STOP_WORDS = {
-    "для", "или", "это", "как", "the", "and", "with", "from", "нужно", "ищем", "работа",
-    "проект", "задача", "требуется", "looking", "project", "developer", "специалист",
-    "проекты", "проектов", "задачи", "задач", "опыт", "опытом", "работы", "условия",
-    "условий", "описание", "ищу",
+    "для",
+    "или",
+    "это",
+    "как",
+    "the",
+    "and",
+    "with",
+    "from",
+    "нужно",
+    "ищем",
+    "работа",
+    "проект",
+    "задача",
+    "требуется",
+    "looking",
+    "project",
+    "developer",
+    "специалист",
+    "проекты",
+    "проектов",
+    "задачи",
+    "задач",
+    "опыт",
+    "опытом",
+    "работы",
+    "условия",
+    "условий",
+    "описание",
+    "ищу",
 }
 
 
@@ -79,6 +107,7 @@ class CandidateRetriever:
         candidates: list[tuple[Opportunity, OpportunityFacts]],
         *,
         top_k: int | None = None,
+        max_new_embeddings: int | None = None,
     ) -> list[RetrievalCandidate]:
         if not candidates:
             return []
@@ -92,9 +121,7 @@ class CandidateRetriever:
         if self.provider.available:
             try:
                 async with session.begin_nested():
-                    profile_vector, hit = await self._vector(
-                        session, "profile", str(user.id), profile_text
-                    )
+                    profile_vector, hit = await self._vector(session, "profile", str(user.id), profile_text)
                     cache_hits += int(hit)
                     cache_misses += int(not hit)
                     vectors, hits = await self._opportunity_vectors(
@@ -102,13 +129,16 @@ class CandidateRetriever:
                         [str(opportunity.id) for opportunity, _ in candidates],
                         opportunity_texts,
                         [opportunity.facts_version or "unversioned" for opportunity, _ in candidates],
+                        max_new=max_new_embeddings,
+                        priority=balanced_indices(candidates, lexical),
                     )
                     cache_hits += hits
                     cache_misses += len(vectors) - hits
                     embedding_scores = [
-                        round(cosine(profile_vector, vector) * 100, 2) for vector in vectors
+                        round(cosine(profile_vector, vector) * 100, 2) if vector else None
+                        for vector in vectors
                     ]
-                fallback_used = False
+                fallback_used = any(score is None for score in embedding_scores)
             except EmbeddingError:
                 logger.warning("retrieval_embedding_fallback provider=%s", self.provider.name, exc_info=True)
         results = []
@@ -116,9 +146,7 @@ class CandidateRetriever:
             candidates, lexical, embedding_scores, strict=True
         ):
             score = (
-                lexical_score
-                if embedding_score is None
-                else embedding_score * 0.85 + lexical_score * 0.15
+                lexical_score if embedding_score is None else embedding_score * 0.85 + lexical_score * 0.15
             )
             results.append(
                 RetrievalCandidate(
@@ -127,7 +155,7 @@ class CandidateRetriever:
                     score=round(score, 2),
                     embedding_score=embedding_score,
                     lexical_score=round(lexical_score, 2),
-                    fallback_used=fallback_used,
+                    fallback_used=embedding_score is None,
                 )
             )
         results.sort(key=lambda item: item.score, reverse=True)
@@ -168,13 +196,22 @@ class CandidateRetriever:
         keys: list[str],
         texts: list[str],
         facts_versions: list[str],
-    ) -> tuple[list[list[float]], int]:
+        *,
+        max_new: int | None = None,
+        priority: list[int] | None = None,
+    ) -> tuple[list[list[float] | None], int]:
         hashes = [
             text_hash(f"{facts_version}\0{text}")
             for facts_version, text in zip(facts_versions, texts, strict=True)
         ]
         cached = await self._cached(session, "opportunity", keys, hashes)
-        missing_indices = [index for index, key in enumerate(keys) if key not in cached]
+        missing_indices = [
+            index
+            for index in (priority if priority is not None else range(len(keys)))
+            if keys[index] not in cached
+        ]
+        if max_new is not None:
+            missing_indices = missing_indices[:max_new]
         generated: dict[str, list[float]] = {}
         batch_size = self.settings.embedding_batch_size
         # Validate every upstream batch before staging any cache writes. This prevents
@@ -197,7 +234,7 @@ class CandidateRetriever:
                 [hashes[index] for index in missing_indices],
                 [generated[key] for key in generated_keys],
             )
-        return [cached.get(key) or generated[key] for key in keys], len(cached)
+        return [cached.get(key) or generated.get(key) for key in keys], len(cached)
 
     async def _cached(
         self,
@@ -221,9 +258,7 @@ class CandidateRetriever:
         expected = dict(zip(keys, hashes, strict=True))
         valid: dict[str, list[float]] = {}
         for row in rows:
-            if row.input_hash != expected.get(row.entity_key) or row.dimensions != len(
-                row.vector or []
-            ):
+            if row.input_hash != expected.get(row.entity_key) or row.dimensions != len(row.vector or []):
                 continue
             try:
                 valid[row.entity_key] = validate_vectors([row.vector], expected=1)[0]
@@ -243,35 +278,32 @@ class CandidateRetriever:
         hashes: list[str],
         vectors: list[list[float]],
     ) -> None:
-        existing_rows = (
-            await session.scalars(
-                select(SemanticRepresentation).where(
-                    SemanticRepresentation.entity_type == entity_type,
-                    SemanticRepresentation.entity_key.in_(keys),
-                    SemanticRepresentation.provider == self.provider.name,
-                    SemanticRepresentation.model == self.provider.model_for(embedding_purpose(entity_type)),
-                )
-            )
-        ).all()
-        existing_by_key = {row.entity_key: row for row in existing_rows}
-        for key, input_hash, vector in zip(keys, hashes, vectors, strict=True):
-            existing = existing_by_key.get(key)
-            if existing:
-                existing.input_hash = input_hash
-                existing.dimensions = len(vector)
-                existing.vector = vector
-            else:
-                session.add(
-                    SemanticRepresentation(
-                        entity_type=entity_type,
-                        entity_key=key,
-                        input_hash=input_hash,
-                        provider=self.provider.name,
-                        model=self.provider.model_for(embedding_purpose(entity_type)),
-                        dimensions=len(vector),
-                        vector=vector,
-                    )
-                )
+        if not keys:
+            return
+        insert = pg_insert if session.bind.dialect.name == "postgresql" else sqlite_insert
+        statement = insert(SemanticRepresentation).values(
+            [
+                {
+                    "entity_type": entity_type,
+                    "entity_key": key,
+                    "input_hash": input_hash,
+                    "provider": self.provider.name,
+                    "model": self.provider.model_for(embedding_purpose(entity_type)),
+                    "dimensions": len(vector),
+                    "vector": vector,
+                    "updated_at": datetime.now(UTC),
+                }
+                for key, input_hash, vector in zip(keys, hashes, vectors, strict=True)
+            ]
+        )
+        statement = statement.on_conflict_do_update(
+            index_elements=["entity_type", "entity_key", "provider", "model"],
+            set_={
+                name: getattr(statement.excluded, name)
+                for name in ["input_hash", "dimensions", "vector", "updated_at"]
+            },
+        )
+        await session.execute(statement)
         await session.flush()
 
 
@@ -286,17 +318,20 @@ def profile_retrieval_text(
     specialties: list[str] | None = None,
 ) -> str:
     cases = [f"{item.title}. {item.description}. {' '.join(item.skills)}" for item in portfolio]
-    return "\n".join(
-        value
-        for value in (
-            profile.candidate.about,
-            ", ".join(profile.candidate.skills),
-            ", ".join(profile.candidate.secondary_skills),
-            ", ".join(specialties or []),
-            " | ".join(cases),
+    return (
+        "\n".join(
+            value
+            for value in (
+                profile.candidate.about,
+                ", ".join(profile.candidate.skills),
+                ", ".join(profile.candidate.secondary_skills),
+                ", ".join(specialties or []),
+                " | ".join(cases),
+            )
+            if value.strip()
         )
-        if value.strip()
-    ) or "Profile has no described capabilities"
+        or "Profile has no described capabilities"
+    )
 
 
 def opportunity_retrieval_text(facts: OpportunityFacts) -> str:
@@ -344,13 +379,32 @@ def text_hash(text: str) -> str:
 
 def _fallback_vector(text: str) -> Counter[str]:
     normalized = normalize_text(text)
-    tokens = [
-        token for token in re.findall(r"[a-zа-яё0-9+#.]{3,}", normalized) if token not in STOP_WORDS
-    ]
+    tokens = [token for token in re.findall(r"[a-zа-яё0-9+#.]{3,}", normalized) if token not in STOP_WORDS]
     vector: Counter[str] = Counter(tokens)
     for token in tokens:
         if len(token) >= 5:
-            vector.update(f"tri:{token[index:index + 3]}" for index in range(len(token) - 2))
+            vector.update(f"tri:{token[index : index + 3]}" for index in range(len(token) - 2))
     for concept in fallback_concepts(normalized):
         vector[f"concept:{concept}"] += 4
     return vector
+
+
+def balanced_indices(
+    candidates: list[tuple[Opportunity, OpportunityFacts]], scores: list[float] | None = None
+) -> list[int]:
+    """Round-robin only the index work, never force sources into final recommendations."""
+    buckets = defaultdict(deque)
+    order = (
+        sorted(range(len(candidates)), key=lambda i: scores[i], reverse=True)
+        if scores
+        else range(len(candidates))
+    )
+    for index in order:
+        buckets[candidates[index][0].source].append(index)
+    result = []
+    while buckets:
+        for source in list(buckets):
+            result.append(buckets[source].popleft())
+            if not buckets[source]:
+                del buckets[source]
+    return result

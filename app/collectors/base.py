@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 class JobSource(ABC):
     def __init__(self, config: SourceConfig):
         self.config = config
+        self.fetch_errors: list[str] = []
 
     @abstractmethod
     async def fetch_new(self) -> list[RawOpportunity]:

@@ -124,5 +124,5 @@ async def test_rebuild_preserves_historical_status_and_proposal(settings, profil
     assert counts["historical_matches_refreshed"] == 1
     assert match.status == OpportunityStatus.CONTACTED
     assert match.proposal == "Stored proposal"
-    assert match.ranking_version == "hybrid-v2"
+    assert match.ranking_version == "hybrid-v3"
     await verification_engine.dispose()

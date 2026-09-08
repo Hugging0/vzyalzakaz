@@ -46,6 +46,10 @@ class OpportunityFacts(BaseModel):
     skills: list[str] = Field(default_factory=list)
     technologies: list[str] = Field(default_factory=list)
     seniority: str | None = None
+    required_skills: list[str] = Field(default_factory=list)
+    alternative_skill_groups: list[list[str]] = Field(default_factory=list)
+    budget_unit: str = "unknown"
+    recurring: bool | None = None
     deliverables: list[str] = Field(default_factory=list)
     budget_raw: str | None = None
     budget_min: float | None = None

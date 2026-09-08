@@ -116,7 +116,7 @@ async def test_pipeline_persists_unknown_without_recommending_globally(settings,
     assert result.opportunity.status == OpportunityStatus.NEW
     assert result.opportunity.content_category == ContentCategory.UNKNOWN
     assert "semantic:unavailable" in result.opportunity.classification_reasons
-    assert result.opportunity.facts_version == "facts-v2"
+    assert result.opportunity.facts_version == "facts-v3"
     assert not hasattr(result.opportunity, "final_score")
     await engine.dispose()
 

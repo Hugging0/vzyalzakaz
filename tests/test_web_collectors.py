@@ -23,7 +23,9 @@ def test_every_enabled_web_source_has_a_registered_collector() -> None:
 
     enabled_web_sources = [source for source in sources if source.enabled and source.type != "telegram"]
 
-    assert len(sources) == 186
+    assert {"fl_ru", "freelance_ru", "telegram_zakaz_design", "telegram_easy_work"} <= {
+        s.name for s in sources
+    }
     assert len({source.name for source in sources}) == len(sources)
     assert all(source.collector in COLLECTOR_REGISTRY for source in enabled_web_sources)
     assert all(not source.enabled for source in sources if source.collector == "pending")
@@ -113,9 +115,7 @@ async def test_himalayas_source_maps_public_api_job() -> None:
 
 @pytest.mark.asyncio
 async def test_freelancer_source_maps_public_project() -> None:
-    source = FreelancerSource(
-        SourceConfig(name="freelancer_com", type="api", collector="freelancer")
-    )
+    source = FreelancerSource(SourceConfig(name="freelancer_com", type="api", collector="freelancer"))
     source.get_json = AsyncMock(
         return_value={
             "result": {
@@ -148,9 +148,7 @@ async def test_freelancer_source_maps_public_project() -> None:
 
 @pytest.mark.asyncio
 async def test_working_nomads_source_uses_url_as_stable_id() -> None:
-    source = WorkingNomadsSource(
-        SourceConfig(name="working_nomads", type="api", collector="working_nomads")
-    )
+    source = WorkingNomadsSource(SourceConfig(name="working_nomads", type="api", collector="working_nomads"))
     source.get_json = AsyncMock(
         return_value=[
             {
@@ -174,9 +172,7 @@ async def test_working_nomads_source_uses_url_as_stable_id() -> None:
 
 @pytest.mark.asyncio
 async def test_problogger_source_maps_public_listing() -> None:
-    source = ProBloggerSource(
-        SourceConfig(name="problogger_jobs", type="web", collector="problogger")
-    )
+    source = ProBloggerSource(SourceConfig(name="problogger_jobs", type="web", collector="problogger"))
     source.get_text = AsyncMock(
         return_value="""
         <div class="wpjb-job-list">

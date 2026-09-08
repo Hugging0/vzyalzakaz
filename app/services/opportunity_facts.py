@@ -10,9 +10,16 @@ from app.services.content_classifier import ContentClassification
 from app.services.currency import FxRateProvider, build_fx_provider, normalize_currency
 from app.services.llm_client import ChatCompletionClient
 from app.services.normalizer import normalize_text
+from app.services.opportunity_terms import (
+    alternative_tools,
+    budget_unit,
+    contains_capability,
+    is_recurring,
+    work_type,
+)
 
 logger = logging.getLogger(__name__)
-FACTS_VERSION = "facts-v2"
+FACTS_VERSION = "facts-v3"
 
 CAPABILITY_ALIASES = {
     "Python": ("python", "питон"),
@@ -112,14 +119,10 @@ class OpportunityFactExtractor:
         update.update(
             {
                 "normalized_budget_min_rub": (
-                    round(facts.budget_min * quote.rate_to_rub, 2)
-                    if facts.budget_min is not None
-                    else None
+                    round(facts.budget_min * quote.rate_to_rub, 2) if facts.budget_min is not None else None
                 ),
                 "normalized_budget_max_rub": (
-                    round(facts.budget_max * quote.rate_to_rub, 2)
-                    if facts.budget_max is not None
-                    else None
+                    round(facts.budget_max * quote.rate_to_rub, 2) if facts.budget_max is not None else None
                 ),
                 "fx_rate_to_rub": quote.rate_to_rub,
                 "fx_rate_date": quote.effective_date,
@@ -141,16 +144,20 @@ source.metadata.<key>; never include invented references.
 Classification: {classification.category.value} ({classification.confidence:.3f})
 Source: {raw.source} / {raw.source_type}
 Structured values: {
-    json.dumps(
-        raw.model_dump(exclude={"raw_text", "description"}),
-        ensure_ascii=False,
-        default=str,
-    )
-}
+            json.dumps(
+                raw.model_dump(exclude={"raw_text", "description"}),
+                ensure_ascii=False,
+                default=str,
+            )
+        }
 Title: {raw.title[:500]}
 Description:
 {(raw.raw_text or raw.description)[:12000]}
 
+Separate required_skills from descriptive tags. Only explicit mandatory skills belong in required_skills.
+Put interchangeable tools (A or B) in alternative_skill_groups, not in required_skills.
+Use canonical work_type: full_time, part_time, project, contract, hourly, unknown.
+Record budget_unit as hour, project, month, year or unknown. Recurring means required repeated work.
 Return only JSON matching this schema: {schema}
 """.strip()
 
@@ -182,6 +189,9 @@ Return only JSON matching this schema: {schema}
         ):
             update[field] = None
         update["fx_status"] = "missing"
+        update["work_type"] = work_type(update["work_type"])
+        if update.get("budget_unit") == "unknown":
+            update["budget_unit"] = budget_unit(raw.raw_text or raw.description, raw.employment_type)
         return OpportunityFacts.model_validate(update)
 
 
@@ -194,11 +204,11 @@ def deterministic_facts(
     detected = [
         name
         for name, aliases in CAPABILITY_ALIASES.items()
-        if any(alias in text for alias in aliases)
+        if any(contains_capability(text, alias) for alias in aliases)
     ]
     skills = _unique([*raw.skills, *detected])
     technologies = _unique([*raw.technologies, *detected])
-    work_type = raw.employment_type or _work_type(text)
+    normalized_work_type = work_type(raw.employment_type or _work_type(text))
     seniority = next(
         (value for value in ("lead", "senior", "middle", "junior", "стажёр") if value in text),
         None,
@@ -253,7 +263,10 @@ def deterministic_facts(
     }
     return OpportunityFacts(
         title=raw.title or original[:140],
-        work_type=work_type,
+        work_type=normalized_work_type,
+        budget_unit=budget_unit(original, raw.employment_type),
+        recurring=is_recurring(original),
+        alternative_skill_groups=alternative_tools(original),
         category=classification.category.value,
         skills=skills,
         technologies=technologies,
@@ -341,3 +354,28 @@ def _deliverables(text: str) -> list[str]:
         )
     ]
     return _unique(selected[:5])
+
+
+def repair_legacy_facts(raw: RawOpportunity, facts: OpportunityFacts) -> OpportunityFacts:
+    """Repair known normalization bugs without discarding previously extracted budgets."""
+    text = raw.raw_text or raw.description
+    skills = [
+        value
+        for value in facts.skills
+        if value != "React" or "React" in raw.skills or contains_capability(text, "react")
+    ]
+    technologies = [
+        value
+        for value in facts.technologies
+        if value != "React" or "React" in raw.technologies or contains_capability(text, "react")
+    ]
+    return facts.model_copy(
+        update={
+            "skills": skills,
+            "technologies": technologies,
+            "work_type": work_type(facts.work_type),
+            "budget_unit": budget_unit(text, raw.employment_type or facts.work_type),
+            "recurring": is_recurring(text),
+            "alternative_skill_groups": alternative_tools(text),
+        }
+    )

@@ -72,7 +72,7 @@ def test_explanations_reference_source_or_profile_facts(profile):
 
 
 def test_ranking_policy_is_versioned_and_normalized():
-    assert RANKING_POLICY.version == "hybrid-v2"
+    assert RANKING_POLICY.version == "hybrid-v3"
     assert sum(RANKING_POLICY.weights.values()) == pytest.approx(1)
 
 

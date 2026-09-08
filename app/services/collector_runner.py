@@ -28,14 +28,15 @@ class CollectorRunner:
             await session.commit()
             run_id = run.id
             try:
-                items = await create_collector(config).fetch_new()
+                collector = create_collector(config)
+                items = await collector.fetch_new()
                 created = 0
                 merged = 0
                 classifications: Counter[str] = Counter()
                 classification_latency_ms = 0.0
                 semantic_fallback_count = 0
                 semantic_fallback_failures = 0
-                item_errors: list[str] = []
+                item_errors: list[str] = list(getattr(collector, "fetch_errors", []))
                 for raw in items:
                     raw.metadata.setdefault("source_content_policy", config.content_policy)
                     raw.metadata.setdefault("source_language", config.language)

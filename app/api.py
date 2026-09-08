@@ -20,7 +20,11 @@ async def health(request: Request) -> dict:
         "status": "ok",
         "llm_provider": runtime.settings.llm_provider,
         "scheduler": bool(runtime.scheduler and runtime.scheduler.running),
-        "telegram_collector": bool(runtime.telegram_collector),
+        "telegram_collector": bool(runtime.telegram_collector and runtime.telegram_collector.last_success_at),
+        "telegram_last_success": runtime.telegram_collector.last_success_at
+        if runtime.telegram_collector
+        else None,
+        "telegram_last_error": runtime.telegram_collector.last_error if runtime.telegram_collector else None,
         "telegram_bot": bool(runtime.telegram_bot),
     }
 
@@ -72,9 +76,7 @@ async def analytics(session: AsyncSession = Depends(get_session)) -> AnalyticsRe
     ).all()
     global_counts = {status: count for status, count in global_rows}
     personal_rows = (
-        await session.execute(
-            select(UserOpportunity.status, func.count()).group_by(UserOpportunity.status)
-        )
+        await session.execute(select(UserOpportunity.status, func.count()).group_by(UserOpportunity.status))
     ).all()
     personal_counts = {status: count for status, count in personal_rows}
     total = await session.scalar(select(func.count()).select_from(Opportunity)) or 0

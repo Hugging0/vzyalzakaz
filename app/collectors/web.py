@@ -7,6 +7,7 @@ from xml.etree import ElementTree
 from bs4 import BeautifulSoup
 
 from app.collectors.base import JobSource
+from app.collectors.russian_projects import FLSource, FreelanceRuSource
 from app.config import SourceConfig
 from app.schemas import RawOpportunity
 
@@ -473,6 +474,8 @@ class GenericRSSSource(JobSource):
 
 
 COLLECTOR_REGISTRY: dict[str, type[JobSource]] = {
+    "fl_ru": FLSource,
+    "freelance_ru": FreelanceRuSource,
     "hh": HHSource,
     "remotive": RemotiveSource,
     "remoteok": RemoteOKSource,

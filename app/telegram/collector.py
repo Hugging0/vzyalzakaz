@@ -4,15 +4,18 @@ import asyncio
 import logging
 import re
 from contextlib import suppress
+from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from telethon import events, utils
 from telethon.tl.custom.message import Message
 
 from app.config import AppSettings, SourceConfig
-from app.models import OpportunityStatus
+from app.models import CollectorCheckpoint, CollectorRun, OpportunityStatus, SourceOccurrence
 from app.schemas import RawOpportunity
 from app.services.content_classifier import is_demand_category
+from app.services.message_tasks import process_message_tasks
 from app.services.pipeline import OpportunityPipeline
 from app.telegram.client import create_user_client
 
@@ -30,44 +33,64 @@ class TelegramCollector:
         notifier=None,
     ):
         self.settings = settings
-        self.sources = [source for source in sources if source.type == "telegram" and source.enabled]
+        self.sources = [s for s in sources if s.type == "telegram" and s.enabled]
         self.session_factory = session_factory
         self.pipeline = pipeline
         self.notifier = notifier
         self.client = create_user_client(settings)
         self._source_by_chat_id: dict[int, SourceConfig] = {}
         self._initialization_task: asyncio.Task | None = None
+        self._wake = asyncio.Event()
+        self._lock = asyncio.Lock()
+        self.last_success_at: datetime | None = None
+        self.last_error: str | None = None
 
     async def start(self) -> bool:
-        await self.client.connect()
-        if not await self.client.is_user_authorized():
-            logger.warning("Telegram user session is not authorized; run: python -m app.telegram_auth")
-            await self.client.disconnect()
-            return False
-
-        self._initialization_task = asyncio.create_task(
-            self._initialize_sources(), name="telegram-source-initialization"
-        )
-        logger.info("Telegram user session connected; resolving channels in background")
+        # A broken proxy must not prevent the web server and HTTP collectors starting.
+        self._initialization_task = asyncio.create_task(self._run(), name="telegram-catchup")
         return True
 
-    async def _initialize_sources(self) -> None:
+    async def _run(self):
+        while True:
+            try:
+                await asyncio.wait_for(self.client.connect(), timeout=30)
+                if not await asyncio.wait_for(self.client.is_user_authorized(), timeout=20):
+                    raise RuntimeError("Telegram session is not authorized")
+                entities = await self._initialize_sources()
+                if not entities:
+                    raise RuntimeError("No Telegram channels resolved")
+                while self.client.is_connected():
+                    self._wake.clear()
+                    await self._initial_backfill(entities)
+                    try:
+                        await asyncio.wait_for(self._wake.wait(), self.settings.telegram_poll_interval)
+                    except TimeoutError:
+                        pass
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                self.last_error = type(exc).__name__
+                logger.exception("Telegram catch-up will retry after connection failure")
+            finally:
+                await self.client.disconnect()
+            await asyncio.sleep(30)
+
+    async def _initialize_sources(self) -> list:
         entities = []
         for source in self.sources:
             try:
-                entity = await self.client.get_entity(source.channel)
+                # Cached peer avoids unnecessary ResolveUsername requests and flood waits.
+                entity = await asyncio.wait_for(self.client.get_input_entity(source.channel), 30)
                 self._source_by_chat_id[utils.get_peer_id(entity)] = source
                 entities.append(entity)
             except Exception:
                 logger.exception("Cannot resolve Telegram channel %s", source.channel)
-
-        if not entities:
-            logger.warning("No Telegram channels could be resolved")
-            return
+        self.client.remove_event_handler(self._on_new_message)
+        self.client.remove_event_handler(self._on_edited_message)
         self.client.add_event_handler(self._on_new_message, events.NewMessage(chats=entities))
         self.client.add_event_handler(self._on_edited_message, events.MessageEdited(chats=entities))
-        asyncio.create_task(self._initial_backfill(entities), name="telegram-backfill")
-        logger.info("Telegram collector listening to %d channels", len(entities))
+        logger.info("Telegram catch-up configured for %d channels", len(entities))
+        return entities
 
     async def stop(self) -> None:
         if self._initialization_task:
@@ -80,33 +103,76 @@ class TelegramCollector:
     async def _initial_backfill(self, entities: list) -> None:
         for entity in entities:
             source = self._source_by_chat_id.get(utils.get_peer_id(entity))
-            if not source:
-                continue
-            limit = int(source.options.get("backfill_limit", 100))
+            if source:
+                async with self._lock:
+                    await self._poll_source(entity, source)
+
+    async def _poll_source(self, entity, source):
+        async with self.session_factory() as session:
+            checkpoint = await session.get(CollectorCheckpoint, source.name)
+            if checkpoint is None:
+                previous = (
+                    await session.scalars(
+                        select(SourceOccurrence.external_id).where(SourceOccurrence.source == source.name)
+                    )
+                ).all()
+                # Bootstrap once from the pre-migration collector's persisted messages.
+                ids = [
+                    int(value.split(":")[1])
+                    for value in previous
+                    if ":" in value and value.split(":")[1].isdigit()
+                ]
+                checkpoint = CollectorCheckpoint(source=source.name, last_message_id=max(ids, default=0))
+                session.add(checkpoint)
+            run = CollectorRun(source=source.name)
+            session.add(run)
+            await session.commit()
             try:
-                messages = [message async for message in self.client.iter_messages(entity, limit=limit)]
-                for message in reversed(messages):
+                cursor = checkpoint.last_message_id
+                limit = (
+                    self.settings.telegram_poll_batch_size
+                    if cursor
+                    else int(source.options.get("backfill_limit", 30))
+                )
+                kwargs = {"limit": limit, "min_id": cursor, "reverse": True} if cursor else {"limit": limit}
+
+                async def fetch():
+                    return [message async for message in self.client.iter_messages(entity, **kwargs)]
+
+                messages = await asyncio.wait_for(fetch(), timeout=45)
+                messages.sort(key=lambda message: message.id)
+                run.fetched = len(messages)
+                run.created = 0
+                for message in messages:
                     if message.message:
-                        await self._process_message(message, source)
-            except Exception:
-                logger.exception("Backfill failed for %s", source.name)
+                        run.created += await self._process_message(message, source)
+                    # Advance only AFTER successful persistence, never from the live event.
+                    checkpoint.last_message_id = message.id
+                    checkpoint.updated_at = datetime.now(UTC)
+                    await session.commit()
+                self.last_success_at = datetime.now(UTC)
+                self.last_error = None
+            except Exception as exc:
+                self.last_error = type(exc).__name__
+                run.error = type(exc).__name__
+                logger.exception("Telegram catch-up failed for %s; position retained", source.name)
+            run.finished_at = datetime.now(UTC)
+            await session.commit()
 
-    async def _on_new_message(self, event: events.NewMessage.Event) -> None:
+    async def _on_new_message(self, event) -> None:
+        self._wake.set()
+
+    async def _on_edited_message(self, event) -> None:
         source = self._source_by_chat_id.get(event.chat_id)
         if source:
-            await self._process_message(event.message, source)
+            async with self._lock:
+                await self._process_message(event.message, source)
 
-    async def _on_edited_message(self, event: events.MessageEdited.Event) -> None:
-        source = self._source_by_chat_id.get(event.chat_id)
-        if source:
-            await self._process_message(event.message, source)
-
-    async def _process_message(self, message: Message, source: SourceConfig) -> None:
+    async def _process_message(self, message: Message, source: SourceConfig) -> int:
         text = message.message or ""
         if not text:
-            return
+            return 0
         username = (source.channel or "").lstrip("@")
-        url = f"https://t.me/{username}/{message.id}" if username else None
         raw = RawOpportunity(
             source=source.name,
             source_type="telegram",
@@ -114,7 +180,7 @@ class TelegramCollector:
             title=_title(text),
             description=text,
             raw_text=text,
-            source_url=url,
+            source_url=f"https://t.me/{username}/{message.id}" if username else None,
             published_at=message.date,
             edited_at=message.edit_date,
             languages=[source.language],
@@ -129,7 +195,8 @@ class TelegramCollector:
             },
         )
         async with self.session_factory() as session:
-            result = await self.pipeline.process(session, raw)
+            results = await process_message_tasks(session, self.pipeline, raw)
+        for result in results:
             opportunity = result.opportunity
             if (
                 (result.created or result.updated)
@@ -138,6 +205,7 @@ class TelegramCollector:
                 and self.notifier
             ):
                 await self.notifier.notify(opportunity)
+        return sum(int(result.created) for result in results)
 
 
 def _title(text: str) -> str:

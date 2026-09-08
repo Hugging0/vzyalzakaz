@@ -8,8 +8,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.config import AppSettings
 from app.services.collector_runner import CollectorRunner
+from app.services.content_recovery import recover_unknown_content
 from app.services.pipeline import OpportunityPipeline
 from app.services.recommendations import RecommendationService
+from app.services.semantic_index import index_active_corpus
 from app.telegram.bot import TelegramBot
 from app.telegram.collector import TelegramCollector
 
@@ -66,8 +68,28 @@ class Runtime:
                     coalesce=True,
                     next_run_time=datetime.now(UTC) + timedelta(seconds=index * 5),
                 )
+            self.scheduler.add_job(
+                index_active_corpus,
+                "interval",
+                seconds=120,
+                args=[self.session_factory, self.recommendations],
+                id="semantic-index",
+                max_instances=1,
+                coalesce=True,
+                next_run_time=datetime.now(UTC) + timedelta(seconds=90),
+            )
+            self.scheduler.add_job(
+                recover_unknown_content,
+                "interval",
+                seconds=300,
+                args=[self.session_factory, self.pipeline],
+                id="content-recovery",
+                max_instances=1,
+                coalesce=True,
+                next_run_time=datetime.now(UTC) + timedelta(seconds=120),
+            )
             self.scheduler.start()
-            logger.info("Scheduler configured with %d web sources", len(self.scheduler.get_jobs()))
+            logger.info("Scheduler configured with %d jobs", len(self.scheduler.get_jobs()))
 
     async def stop(self) -> None:
         if self.scheduler and self.scheduler.running:

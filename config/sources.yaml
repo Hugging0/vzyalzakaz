@@ -7,7 +7,7 @@ sources:
   - {name: telegram_hr_itwork, type: telegram, language: ru, priority: tier_a, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@hr_itwork", options: {backfill_limit: 30}}
   - {name: telegram_remote_python_jobs, type: telegram, language: en, priority: tier_a, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@remote_python_jobs", options: {backfill_limit: 30}}
   - {name: telegram_remote_ai_jobs, type: telegram, language: en, priority: tier_a, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@remote_ai_jobs", options: {backfill_limit: 30}}
-  - {name: telegram_it_remote_projects, type: telegram, language: multi, priority: tier_a, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@IT_REMOTE_PROJECTS", options: {backfill_limit: 30}}
+  - {name: telegram_it_remote_projects, type: telegram, language: multi, priority: tier_a, enabled: false, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@IT_REMOTE_PROJECTS", options: {backfill_limit: 30}}
   - {name: telegram_doorkaari, type: telegram, language: fa, priority: tier_a, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@doorkaari", options: {backfill_limit: 30}}
 
   # Telegram Tier B
@@ -22,12 +22,12 @@ sources:
   - {name: telegram_remote_devops_jobs, type: telegram, language: en, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@remote_devops_jobs", options: {backfill_limit: 15}}
   - {name: telegram_remotejobs, type: telegram, language: en, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@remotejobs", options: {backfill_limit: 15}}
   - {name: telegram_remotejobss, type: telegram, language: en, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@remotejobss", options: {backfill_limit: 15}}
-  - {name: telegram_remoters, type: telegram, language: en, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@remoters", options: {backfill_limit: 15}}
+  - {name: telegram_remoters, type: telegram, language: en, priority: tier_b, enabled: false, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@remoters", options: {backfill_limit: 15}}
   - {name: telegram_ai_india_jobs, type: telegram, language: en, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@AiIndiaJobs", options: {backfill_limit: 15}}
   - {name: telegram_dev_jobs_daily, type: telegram, language: en, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@DevJobsDaily", options: {backfill_limit: 15}}
-  - {name: telegram_freelancer_projects, type: telegram, language: fa, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@freelancer_projects", options: {backfill_limit: 15}}
+  - {name: telegram_freelancer_projects, type: telegram, language: fa, priority: tier_b, enabled: false, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@freelancer_projects", options: {backfill_limit: 15}}
   - {name: telegram_project_board, type: telegram, language: fa, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@Project_board", options: {backfill_limit: 15}}
-  - {name: telegram_freelancer_news, type: telegram, language: fa, priority: tier_b, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@Freelancer_news", options: {backfill_limit: 15}}
+  - {name: telegram_freelancer_news, type: telegram, language: fa, priority: tier_b, enabled: false, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@Freelancer_news", options: {backfill_limit: 15}}
   - {name: telegram_freelance_ethio, type: telegram, language: en, priority: tier_c, enabled: true, collector: telethon, apply_mode: send_allowed, poll_interval: 0, channel: "@freelance_ethio", options: {backfill_limit: 10}}
 
   # Telegram: digital, SMM, video, motion and CG. All are review-only.
@@ -262,8 +262,8 @@ sources:
     url: https://problogger.com/jobs/
 
   # Russia / CIS: public pages need a dedicated parser and production observation.
-  - {name: freelance_ru, display_name: Freelance.ru, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, submission_type: browser_extension, adapter_id: freelance_ru, application_hosts: [freelance.ru], capabilities: [browser_autofill, attachments, custom_questions, requires_auth, requires_confirmation], poll_interval: 1800, url: "https://freelance.ru/task/"}
-  - {name: fl_ru, display_name: FL.ru, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, submission_type: browser_extension, adapter_id: fl_ru, application_hosts: [fl.ru], capabilities: [browser_autofill, attachments, custom_questions, requires_auth, requires_confirmation], poll_interval: 1800, url: "https://www.fl.ru/projects/"}
+  - {name: freelance_ru, display_name: Freelance.ru, type: web, language: ru, priority: tier_a, enabled: true, content_policy: demand_only, collector: freelance_ru, apply_mode: draft_only, submission_type: browser_extension, adapter_id: freelance_ru, application_hosts: [freelance.ru], capabilities: [browser_autofill, attachments, custom_questions, requires_auth, requires_confirmation], poll_interval: 900, url: "https://freelance.ru/task/"}
+  - {name: fl_ru, display_name: FL.ru, type: web, language: ru, priority: tier_a, enabled: true, content_policy: demand_only, collector: fl_ru, apply_mode: draft_only, submission_type: browser_extension, adapter_id: fl_ru, application_hosts: [fl.ru], capabilities: [browser_autofill, attachments, custom_questions, requires_auth, requires_confirmation], poll_interval: 900, url: "https://www.fl.ru/projects/"}
   - {name: kwork_projects, display_name: Kwork, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, submission_type: browser_extension, adapter_id: kwork_projects, application_hosts: [kwork.ru], capabilities: [browser_autofill, attachments, custom_questions, requires_auth, requires_confirmation], poll_interval: 1800, url: "https://kwork.ru/projects"}
   - {name: weblancer, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 1800, url: "https://www.weblancer.net/freelance/"}
   - {name: workspace_tenders, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://workspace.ru/tenders/"}
@@ -420,3 +420,7 @@ sources:
   - {name: tektorg, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://www.tektorg.ru/"}
   - {name: otc_tenders, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://otc.ru/search/zakaz"}
   - {name: bidzaar, type: web, language: ru, priority: tier_a, enabled: false, collector: pending, apply_mode: draft_only, poll_interval: 3600, url: "https://bidzaar.com/"}
+
+  # Verified public channels, September 2026; project-level filtering remains mandatory.
+  - {name: telegram_zakaz_design, type: telegram, language: ru, enabled: true, collector: telethon, channel: "@zakaz_design", apply_mode: draft_only, options: {backfill_limit: 30}}
+  - {name: telegram_easy_work, type: telegram, language: ru, enabled: true, collector: telethon, channel: "@easy_wrk", apply_mode: draft_only, options: {backfill_limit: 30}}

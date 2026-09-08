@@ -36,6 +36,7 @@ class ChatCompletionClient:
             or {
                 "deepseek": "https://api.deepseek.com",
                 "openrouter": "https://openrouter.ai/api/v1",
+                "timeweb": "https://api.timeweb.ai/v1",
             }[self.settings.llm_provider]
         )
         payload: dict[str, Any] = {
@@ -52,9 +53,7 @@ class ChatCompletionClient:
             payload["max_tokens"] = max_tokens
         headers = {"Authorization": f"Bearer {self.settings.llm_api_key}"}
         if self.settings.llm_provider == "openrouter":
-            headers.update(
-                {"HTTP-Referer": "https://vzyalzakaz.ru", "X-Title": "VzyalZakaz"}
-            )
+            headers.update({"HTTP-Referer": "https://vzyalzakaz.ru", "X-Title": "VzyalZakaz"})
         timeout = timeout_seconds or self.settings.llm_timeout_seconds
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(

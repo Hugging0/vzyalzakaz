@@ -43,8 +43,9 @@ class Avoid(BaseModel):
 
 
 class Economics(BaseModel):
-    minimum_project_rub: int = 10_000
-    target_hourly_rub: int = 2_000
+    # Zero means the user has not set a monetary constraint.
+    minimum_project_rub: int = Field(default=0, ge=0)
+    target_hourly_rub: int = Field(default=0, ge=0)
 
 
 class Ranking(BaseModel):
@@ -115,7 +116,7 @@ class AppSettings(BaseSettings):
     enable_telegram_collector: bool = True
     enable_telegram_bot: bool = True
 
-    llm_provider: Literal["deepseek", "openrouter", "disabled"] = "disabled"
+    llm_provider: Literal["deepseek", "openrouter", "timeweb", "disabled"] = "disabled"
     llm_api_key: str | None = None
     llm_model: str = "deepseek-chat"
     llm_base_url: str | None = None
@@ -139,6 +140,8 @@ class AppSettings(BaseSettings):
     telegram_proxy_port: int = 1080
     telegram_proxy_username: str | None = None
     telegram_proxy_password: str | None = None
+    telegram_poll_interval: int = Field(default=180, ge=30)
+    telegram_poll_batch_size: int = Field(default=100, ge=1, le=500)
     telegram_bot_token: str | None = None
     telegram_owner_id: int | None = None
     mini_app_url: str | None = None
@@ -146,6 +149,9 @@ class AppSettings(BaseSettings):
     registration_invite_code: str | None = None
     max_users: int = 100
     onboarding_backfill_limit: int = 200
+    matching_corpus_days: int = Field(default=14, ge=1, le=90)
+    matching_embedding_miss_limit: int = Field(default=32, ge=0, le=256)
+    semantic_index_batch_size: int = Field(default=64, ge=1, le=256)
     matching_retrieval_top_k: int = Field(default=100, ge=1, le=1000)
     matching_retrieval_min_score: float = Field(default=8, ge=0, le=100)
     matching_persist_score: float = Field(default=35, ge=0, le=100)

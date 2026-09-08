@@ -74,9 +74,7 @@ async def test_embedding_retrieval_handles_meaning_without_shared_aliases(settin
         user = TelegramUser(telegram_user_id=1, profile=profile.model_dump(), portfolio=[])
         session.add_all([user, relevant[0], irrelevant[0]])
         await session.flush()
-        ranked = await retriever.retrieve(
-            session, user, profile, [], [irrelevant, relevant], top_k=1
-        )
+        ranked = await retriever.retrieve(session, user, profile, [], [irrelevant, relevant], top_k=1)
         await session.commit()
 
     assert ranked[0].opportunity.external_id == "1"
@@ -107,9 +105,9 @@ async def test_embeddings_are_cached_and_profile_hash_invalidates_only_profile(s
         profile.candidate.about = "COBOL and mainframe operations"
         await retriever.retrieve(session, user, profile, [], [candidate])
         opportunity_cache_count = await session.scalar(
-            select(func.count()).select_from(SemanticRepresentation).where(
-                SemanticRepresentation.entity_type == "opportunity"
-            )
+            select(func.count())
+            .select_from(SemanticRepresentation)
+            .where(SemanticRepresentation.entity_type == "opportunity")
         )
         assert provider.calls == first_calls + 1
         assert opportunity_cache_count == 1
@@ -136,9 +134,7 @@ async def test_embedding_failures_use_fallback_without_corrupting_cache(settings
         await session.flush()
         ranked = await retriever.retrieve(session, user, profile, [], [candidate])
         await session.commit()
-        cache_count = await session.scalar(
-            select(func.count()).select_from(SemanticRepresentation)
-        )
+        cache_count = await session.scalar(select(func.count()).select_from(SemanticRepresentation))
 
     assert ranked[0].fallback_used
     assert cache_count == 0
@@ -194,4 +190,39 @@ async def test_query_and_document_models_are_routed_and_cached_separately(settin
             ("profile", "query-v2"),
             ("opportunity", "doc-v1"),
         }
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_cold_corpus_limits_api_work_without_dropping_uncached_orders(settings, profile):
+    engine = make_engine(settings.database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    provider = SemanticTestProvider()
+    retriever = CandidateRetriever(settings, provider)
+    candidates = [make_opportunity(str(i), "Create a Figma prototype") for i in range(6)]
+    candidates[-1][0].source = "quiet"
+    async with factory() as session:
+        user = TelegramUser(telegram_user_id=99, profile=profile.model_dump(), portfolio=[])
+        session.add_all([user, *[o for o, _ in candidates]])
+        await session.flush()
+        results = await retriever.retrieve(
+            session, user, profile, [], candidates, top_k=6, max_new_embeddings=2
+        )
+        assert len(results) == 6
+        assert sum(not r.fallback_used for r in results) == 2
+        assert not next(r for r in results if r.opportunity.source == "quiet").fallback_used
+        rows = (
+            await session.scalars(
+                select(SemanticRepresentation).where(SemanticRepresentation.entity_type == "opportunity")
+            )
+        ).all()
+        assert len(rows) == 2
+        calls = provider.calls
+        results = await retriever.retrieve(
+            session, user, profile, [], candidates, top_k=6, max_new_embeddings=0
+        )
+        assert provider.calls == calls
+        assert sum(not r.fallback_used for r in results) == 2
     await engine.dispose()

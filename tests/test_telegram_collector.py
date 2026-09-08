@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -32,9 +33,10 @@ async def test_backfill_uses_normalized_channel_peer_id() -> None:
     collector = object.__new__(TelegramCollector)
     collector.client = FakeTelegramClient()
     collector._source_by_chat_id = {utils.get_peer_id(entity): source}
-    collector._process_message = AsyncMock()
+    collector._lock = asyncio.Lock()
+    collector._poll_source = AsyncMock()
 
     await collector._initial_backfill([entity])
 
-    collector._process_message.assert_awaited_once()
-    assert collector._process_message.await_args.args[1] is source
+    collector._poll_source.assert_awaited_once()
+    assert collector._poll_source.await_args.args[1] is source

@@ -13,11 +13,12 @@ from app.models import Opportunity, TelegramUser
 from app.schemas import MatchDimension, MatchEvidence, OpportunityFacts, UserMatchAnalysis
 from app.services.llm_client import ChatCompletionClient
 from app.services.normalizer import normalize_text
+from app.services.opportunity_terms import work_type
 from app.services.ranking import freshness_score
 from app.services.retrieval import fallback_concepts, lexical_similarity
 
 logger = logging.getLogger(__name__)
-RANKING_VERSION = "hybrid-v2"
+RANKING_VERSION = "hybrid-v3"
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,8 +98,12 @@ class UserMatchAnalyzer:
             failures.append("office_required")
         if profile.avoid.relocation and "relocation_required" in facts.risk_flags:
             failures.append("relocation_required")
-        if profile.avoid.full_time and facts.work_type == "full_time":
+        if profile.avoid.full_time and work_type(facts.work_type) == "full_time":
             failures.append("full_time")
+        if not profile.preferred.part_time and (
+            work_type(facts.work_type) == "part_time" or facts.recurring is True
+        ):
+            failures.append("recurring_work")
         if profile.avoid.daily_daytime_calls and "daytime_calls" in facts.meeting_constraints:
             failures.append("daytime_calls")
         comparable_max = facts.normalized_budget_max_rub
@@ -106,7 +111,8 @@ class UserMatchAnalyzer:
             comparable_max = facts.budget_max
         if (
             comparable_max is not None
-            and comparable_max < profile.economics.minimum_project_rub
+            and _minimum_for(facts, profile) > 0
+            and comparable_max < _minimum_for(facts, profile)
         ):
             failures.append("budget_below_floor")
 
@@ -123,8 +129,8 @@ class UserMatchAnalyzer:
 
         project_types = {normalize_text(value) for value in ui.get("project_types", []) if value}
         if project_types and facts.work_type != "unknown":
-            work_type = normalize_text(facts.work_type.replace("_", " "))
-            if not any(value in work_type or work_type in value for value in project_types):
+            selected_work_type = normalize_text(work_type(facts.work_type).replace("_", " "))
+            if not any(value in selected_work_type or selected_work_type in value for value in project_types):
                 failures.append(f"format_not_selected:{facts.work_type}")
         return EligibilityResult(not failures, list(dict.fromkeys(failures)))
 
@@ -193,8 +199,7 @@ Return only JSON matching: {schema}
             rerank = RerankResult.model_validate(result)
             evidence = [*rerank.why_recommended, *rerank.checks]
             if not all(
-                set(item.source_facts) <= allowed_source
-                and set(item.profile_facts) <= allowed_profile
+                set(item.source_facts) <= allowed_source and set(item.profile_facts) <= allowed_profile
                 for item in evidence
             ):
                 raise ValueError("reranker returned unknown evidence references")
@@ -227,13 +232,20 @@ def deterministic_match(
     requested = _unique([*facts.skills, *facts.technologies])
     primary = _unique(profile.candidate.skills)
     secondary = _unique(profile.candidate.secondary_skills)
+    candidate_keys = {_key(value) for value in [*primary, *secondary]}
+    for group in facts.alternative_skill_groups:
+        group_keys = {_key(value) for value in group}
+        representative = (
+            next((value for value in group if _key(value) in candidate_keys), group[0]) if group else None
+        )
+        requested = [value for value in requested if _key(value) not in group_keys]
+        if representative:
+            requested.append(representative)
     requested_by_key = {_key(value): value for value in requested}
     primary_keys = {_key(value): value for value in primary}
     secondary_keys = {_key(value): value for value in secondary}
     direct_keys = set(requested_by_key) & (set(primary_keys) | set(secondary_keys))
-    requested_concepts = fallback_concepts(
-        " ".join([facts.title, *requested, *facts.deliverables])
-    )
+    requested_concepts = fallback_concepts(" ".join([facts.title, *requested, *facts.deliverables]))
     profile_concepts = fallback_concepts(" ".join([*primary, *secondary, profile.candidate.about]))
     transferable_concepts = sorted(
         (requested_concepts & profile_concepts) - fallback_concepts(" ".join(direct_keys))
@@ -246,9 +258,7 @@ def deterministic_match(
     )
     profile_text = " ".join([profile.candidate.about, *primary, *secondary])
     semantic = (
-        retrieval_score
-        if retrieval_score is not None
-        else lexical_similarity(profile_text, opportunity_text)
+        retrieval_score if retrieval_score is not None else lexical_similarity(profile_text, opportunity_text)
     )
     skill_score = (
         45.0
@@ -258,9 +268,7 @@ def deterministic_match(
 
     portfolio_scores = [
         (
-            lexical_similarity(
-                f"{item.title} {item.description} {' '.join(item.skills)}", opportunity_text
-            ),
+            lexical_similarity(f"{item.title} {item.description} {' '.join(item.skills)}", opportunity_text),
             item,
         )
         for item in portfolio
@@ -291,13 +299,12 @@ def deterministic_match(
     }
     if embedding_score is not None:
         features["embedding_similarity"] = round(embedding_score, 2)
-    score = _clamp(
-        sum(features[key] * weight for key, weight in RANKING_POLICY.weights.items())
-    )
+    score = _clamp(sum(features[key] * weight for key, weight in RANKING_POLICY.weights.items()))
     missing = [
         requested_by_key[key]
         for key in requested_by_key
-        if key not in direct_keys
+        if key in {_key(value) for value in facts.required_skills}
+        and key not in direct_keys
         and not (fallback_concepts(requested_by_key[key]) & profile_concepts)
     ]
     why = _why_recommended(
@@ -309,6 +316,7 @@ def deterministic_match(
         best_portfolio_score,
     )
     checks = _checks(facts, profile, missing)
+    money_known = facts.fx_status in {"normalized", "same_currency"}
     dimensions = {
         "skills": _dimension(
             skill_score,
@@ -317,8 +325,8 @@ def deterministic_match(
             [f"profile.skills:{item}" for item in primary],
         ),
         "money": _dimension(
-            money,
-            _quality(money),
+            money if money_known else 50,
+            _quality(money) if money_known else _quality(50),
             _budget_refs(facts),
             [f"profile.minimum_project_rub:{profile.economics.minimum_project_rub}"],
         ),
@@ -406,18 +414,27 @@ def _why_recommended(
                 profile_facts=["profile.skills"],
             )
         )
-    if facts.fx_status in {"normalized", "same_currency"} and (
-        facts.normalized_budget_max_rub or facts.normalized_budget_min_rub
+    minimum = _minimum_for(facts, profile)
+    if (
+        minimum > 0
+        and facts.fx_status in {"normalized", "same_currency"}
+        and facts.normalized_budget_min_rub is not None
+        and facts.normalized_budget_min_rub >= minimum
     ):
-        budget = facts.normalized_budget_max_rub or facts.normalized_budget_min_rub or 0
-        if budget >= profile.economics.minimum_project_rub:
-            reasons.append(
-                MatchEvidence(
-                    text="Указанный бюджет не ниже вашего минимума.",
-                    source_facts=_budget_refs(facts),
-                    profile_facts=[f"profile.minimum_project_rub:{profile.economics.minimum_project_rub}"],
-                )
+        hourly = facts.budget_unit == "hour" or work_type(facts.work_type) == "hourly"
+        reasons.append(
+            MatchEvidence(
+                text="Указанная ставка не ниже вашей целевой."
+                if hourly
+                else "Нижняя граница бюджета не ниже вашего минимума.",
+                source_facts=_budget_refs(facts),
+                profile_facts=[
+                    f"profile.target_hourly_rub:{minimum}"
+                    if hourly
+                    else f"profile.minimum_project_rub:{minimum}"
+                ],
             )
+        )
     if portfolio and portfolio_score >= 12:
         reasons.append(
             MatchEvidence(
@@ -475,10 +492,10 @@ def _checks(
                     source_facts=[f"opportunity.risk_flags:{risk}"],
                 )
             )
-    if (
-        (facts.budget_min is not None or facts.budget_max is not None)
-        and facts.fx_status not in {"normalized", "same_currency"}
-    ):
+    if (facts.budget_min is not None or facts.budget_max is not None) and facts.fx_status not in {
+        "normalized",
+        "same_currency",
+    }:
         checks.append(
             MatchEvidence(
                 text="Бюджет указан, но курс для сравнения недоступен — проверьте деньги вручную.",
@@ -497,24 +514,28 @@ def _checks(
     return checks
 
 
+def _minimum_for(facts: OpportunityFacts, profile: CandidateProfile) -> int:
+    if facts.budget_unit == "hour" or work_type(facts.work_type) == "hourly":
+        return profile.economics.target_hourly_rub
+    if facts.budget_unit in {"month", "year"}:
+        return 0
+    return profile.economics.minimum_project_rub
+
+
 def _money_score(facts: OpportunityFacts, profile: CandidateProfile) -> float:
     expected = facts.normalized_budget_max_rub or facts.normalized_budget_min_rub
-    if expected is None or facts.fx_status not in {"normalized", "same_currency"}:
-        return 50
-    minimum = max(profile.economics.minimum_project_rub, 1)
-    if expected >= minimum * 2:
-        return 95
-    if expected >= minimum * 1.25:
-        return 85
-    if expected >= minimum:
+    minimum = _minimum_for(facts, profile)
+    # Absence of a budget is not evidence of poor fit. No reward just for
+    # advertising a large (possibly placeholder) upper bound either.
+    if expected is None or facts.fx_status not in {"normalized", "same_currency"} or minimum == 0:
         return 72
-    return 20
+    return 72 if expected >= minimum else 20
 
 
 def _format_score(facts: OpportunityFacts, profile: CandidateProfile) -> float:
     if facts.remote is False and profile.preferred.remote:
         return 0
-    if facts.work_type == "full_time" and profile.avoid.full_time:
+    if work_type(facts.work_type) == "full_time" and profile.avoid.full_time:
         return 10
     if facts.remote is True:
         return 90
@@ -626,12 +647,12 @@ def _allowed_references(
         "profile.skills",
         "profile.preferred",
         f"profile.minimum_project_rub:{profile.economics.minimum_project_rub}",
+        f"profile.target_hourly_rub:{profile.economics.target_hourly_rub}",
         f"profile.max_hours_week:{profile.availability.max_hours_week}",
         f"profile.preferred.remote:{str(profile.preferred.remote).lower()}",
     }
     profile_refs.update(
-        f"profile.skills:{item}"
-        for item in [*profile.candidate.skills, *profile.candidate.secondary_skills]
+        f"profile.skills:{item}" for item in [*profile.candidate.skills, *profile.candidate.secondary_skills]
     )
     profile_refs.update(f"profile.portfolio:{item.slug}" for item in portfolio)
     return source, profile_refs

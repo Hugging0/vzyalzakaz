@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from time import perf_counter
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import AppSettings, Candidate, CandidateProfile, PortfolioProject
@@ -22,7 +22,7 @@ from app.services.content_classifier import (
     is_demand_category,
 )
 from app.services.matching import UserMatchAnalyzer
-from app.services.opportunity_facts import FACTS_VERSION, OpportunityFactExtractor
+from app.services.opportunity_facts import FACTS_VERSION, OpportunityFactExtractor, repair_legacy_facts
 from app.services.portfolio import select_portfolio
 from app.services.retrieval import CandidateRetriever, RetrievalCandidate
 from app.services.scoring import CandidateAssistant
@@ -110,8 +110,7 @@ class RecommendationService:
         if self.settings.registration_mode == "closed":
             return False
         return bool(
-            self.settings.registration_invite_code
-            and invite_code == self.settings.registration_invite_code
+            self.settings.registration_invite_code and invite_code == self.settings.registration_invite_code
         )
 
     def profile_for(self, user: TelegramUser) -> CandidateProfile:
@@ -133,9 +132,9 @@ class RecommendationService:
         intake = await CandidateAssistant(self.settings, profile).extract_profile(text)
         profile.candidate.about = text.strip()[:6000]
         profile.candidate.skills = list(dict.fromkeys([*profile.candidate.skills, *intake.skills]))[:100]
-        profile.candidate.languages = list(
-            dict.fromkeys([*profile.candidate.languages, *intake.languages])
-        )[:10]
+        profile.candidate.languages = list(dict.fromkeys([*profile.candidate.languages, *intake.languages]))[
+            :10
+        ]
         if minimum_budget is not None:
             profile.economics.minimum_project_rub = minimum_budget
         elif intake.minimum_project_rub is not None:
@@ -168,9 +167,8 @@ class RecommendationService:
         *,
         allow_llm_rerank: bool = True,
     ) -> UserOpportunity | None:
-        if (
-            opportunity.status == OpportunityStatus.FILTERED
-            or not is_demand_category(opportunity.content_category)
+        if opportunity.status == OpportunityStatus.FILTERED or not is_demand_category(
+            opportunity.content_category
         ):
             return None
         existing = await session.scalar(
@@ -231,7 +229,17 @@ class RecommendationService:
             .order_by(Opportunity.published_at.desc().nullslast())
         )
         if not full_corpus:
-            query = query.limit(limit if limit is not None else self.settings.onboarding_backfill_limit)
+            cutoff = datetime.now(UTC) - timedelta(days=self.settings.matching_corpus_days)
+            query = query.where(
+                or_(
+                    Opportunity.published_at >= cutoff,
+                    (Opportunity.published_at.is_(None)) & (Opportunity.collected_at >= cutoff),
+                )
+            )
+        # An explicit administrative limit remains supported; onboarding no longer
+        # discards sources before personalization.
+        if limit is not None:
+            query = query.limit(limit)
         opportunities = (await session.scalars(query)).all()
         profile = self.profile_for(user)
         portfolio = self.portfolio_for(user)
@@ -253,6 +261,7 @@ class RecommendationService:
             portfolio,
             eligible,
             top_k=self.settings.matching_retrieval_top_k,
+            max_new_embeddings=self.settings.matching_embedding_miss_limit,
         )
         matches: list[tuple[UserOpportunity, Opportunity]] = []
         persisted_count = 0
@@ -266,6 +275,17 @@ class RecommendationService:
                 )
             )
             if existing:
+                analysis = await self.matcher.analyze(
+                    candidate.opportunity,
+                    candidate.facts,
+                    profile,
+                    portfolio,
+                    retrieval_score=candidate.score,
+                    embedding_score=candidate.embedding_score,
+                    retrieval_fallback_used=candidate.fallback_used,
+                    allow_llm_rerank=False,
+                )
+                self._apply_analysis(existing, candidate.opportunity, candidate.facts, analysis, portfolio)
                 matches.append((existing, candidate.opportunity))
                 continue
             match = await self._rank_candidate(
@@ -425,7 +445,12 @@ class RecommendationService:
             latency_ms=opportunity.classification_latency_ms or 0,
             version=opportunity.classification_version or "intent-v1",
         )
-        facts = await self.fact_extractor.extract(_to_raw(opportunity), classification)
+        if opportunity.facts:
+            facts = repair_legacy_facts(
+                _to_raw(opportunity), OpportunityFacts.model_validate(opportunity.facts)
+            )
+        else:
+            facts = await self.fact_extractor.extract(_to_raw(opportunity), classification, allow_llm=False)
         opportunity.facts = facts.model_dump(mode="json")
         opportunity.facts_version = FACTS_VERSION
         await session.flush()
@@ -486,9 +511,7 @@ class RecommendationService:
         match.feature_vector = features
         match.explanation = {
             "strength_label": analysis.strength_label,
-            "dimensions": {
-                key: value.model_dump(mode="json") for key, value in analysis.dimensions.items()
-            },
+            "dimensions": {key: value.model_dump(mode="json") for key, value in analysis.dimensions.items()},
             "why_recommended": [item.model_dump(mode="json") for item in analysis.why_recommended],
             "checks": [item.model_dump(mode="json") for item in analysis.checks],
             "retrieval": {

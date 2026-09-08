@@ -171,6 +171,14 @@ class SourceOccurrence(Base):
     __table_args__ = (UniqueConstraint("source", "external_id", name="uq_occurrence_source_external"),)
 
 
+class CollectorCheckpoint(Base):
+    __tablename__ = "collector_checkpoints"
+
+    source: Mapped[str] = mapped_column(String(100), primary_key=True)
+    last_message_id: Mapped[int] = mapped_column(BigInteger, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
 class CollectorRun(Base):
     __tablename__ = "collector_runs"
 

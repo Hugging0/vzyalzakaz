@@ -36,3 +36,4 @@ def test_sqlite_upgrade_from_0008_removes_legacy_and_adds_semantic_cache(tmp_pat
     assert "prefilter_score" not in after
     assert "final_score" not in after
     assert "semantic_representations" in tables
+    assert "collector_checkpoints" in tables
