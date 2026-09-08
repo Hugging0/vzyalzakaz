@@ -24,6 +24,7 @@ from app.services.embeddings import (
     validate_vectors,
 )
 from app.services.normalizer import normalize_text
+from app.services.opportunity_terms import contains_capability
 
 logger = logging.getLogger(__name__)
 RETRIEVAL_VERSION = "retrieval-v2"
@@ -158,7 +159,27 @@ class CandidateRetriever:
                     fallback_used=embedding_score is None,
                 )
             )
-        results.sort(key=lambda item: item.score, reverse=True)
+        if any(item.fallback_used for item in results) and any(not item.fallback_used for item in results):
+            # Raw lexical and embedding cosines have different distributions. During
+            # index warming fuse ranks, imputing missing semantic rank from lexical
+            # rank so a cache hit alone cannot crowd out unindexed candidates.
+            lexical_order = sorted(results, key=lambda item: item.lexical_score, reverse=True)
+            semantic_order = sorted(
+                [item for item in results if not item.fallback_used],
+                key=lambda item: item.embedding_score,
+                reverse=True,
+            )
+            lexical_ranks = {id(item): rank for rank, item in enumerate(lexical_order, 1)}
+            semantic_ranks = {id(item): rank for rank, item in enumerate(semantic_order, 1)}
+            results.sort(
+                key=lambda item: (
+                    1 / (60 + lexical_ranks[id(item)])
+                    + 1 / (60 + semantic_ranks.get(id(item), lexical_ranks[id(item)]))
+                ),
+                reverse=True,
+            )
+        else:
+            results.sort(key=lambda item: item.score, reverse=True)
         selected = results[: top_k or self.settings.matching_retrieval_top_k]
         logger.info(
             "recommendation_retrieval scanned=%d candidates=%d selected=%d provider=%s "
@@ -363,7 +384,7 @@ def fallback_concepts(text: str) -> set[str]:
     return {
         concept
         for concept, phrases in FALLBACK_CAPABILITY_GROUPS.items()
-        if any(phrase in normalized for phrase in phrases)
+        if any(contains_capability(normalized, phrase) for phrase in phrases)
     }
 
 

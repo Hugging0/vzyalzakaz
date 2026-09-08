@@ -182,3 +182,18 @@ async def test_telegram_checkpoint_retains_failed_message_across_restart(setting
     async with factory() as session:
         assert (await session.get(CollectorCheckpoint, "tg")).last_message_id == 13
     await engine.dispose()
+
+
+def test_no_skills_does_not_receive_unearned_skill_score(profile):
+    result = deterministic_match(row(1), OpportunityFacts(title="Продать приложение"), profile, [])
+    assert result.feature_vector["skill_overlap"] == 0
+
+
+@pytest.mark.parametrize("text", ["Примерный объем 12-16 видео в месяц", "Ведение и развитие двух сообществ"])
+def test_recurring_copy_overrides_unknown_legacy_fact(settings, profile, text):
+    profile.preferred.part_time = False
+    opportunity = row(1)
+    opportunity.raw_text = text
+    user = TelegramUser(telegram_user_id=1, profile=profile.model_dump(), portfolio=[])
+    result = UserMatchAnalyzer(settings).cheap_eligibility(user, opportunity, OpportunityFacts(), profile)
+    assert "recurring_work" in result.reasons

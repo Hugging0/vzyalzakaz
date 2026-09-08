@@ -226,3 +226,34 @@ async def test_cold_corpus_limits_api_work_without_dropping_uncached_orders(sett
         assert provider.calls == calls
         assert sum(not r.fallback_used for r in results) == 2
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_partial_index_does_not_hide_unindexed_exact_task(settings, profile):
+    engine = make_engine(settings.database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    retriever = CandidateRetriever(settings, SemanticTestProvider())
+    profile.candidate.skills = ["React"]
+    profile.candidate.about = "React landing page"
+    relevant = make_opportunity("50", "React landing page")
+    irrelevant = make_opportunity("51", "Sell a mobile application")
+    async with factory() as session:
+        user = TelegramUser(telegram_user_id=50, profile=profile.model_dump(), portfolio=[])
+        session.add_all([user, relevant[0], irrelevant[0]])
+        await session.flush()
+        # The fake provider makes the unrelated cached result look identical.
+        await retriever.retrieve(session, user, profile, [], [irrelevant])
+        ranked = await retriever.retrieve(
+            session, user, profile, [], [irrelevant, relevant], top_k=1, max_new_embeddings=0
+        )
+        assert ranked[0].opportunity.id == relevant[0].id
+        assert ranked[0].fallback_used
+    await engine.dispose()
+
+
+def test_capability_groups_do_not_match_inside_english_words():
+    from app.services.retrieval import fallback_concepts
+
+    assert not fallback_concepts("required reactions subscription")

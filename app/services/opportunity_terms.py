@@ -48,7 +48,8 @@ def is_recurring(text: str) -> bool | None:
     if re.search(
         r"(?:кажд\w* (?:день|недел|месяц)|ежедневн|еженедельн|ежемесячн|"
         r"на постоянной основе|долгосрочн|per week|each week|every week|"
-        r"reels in a month|ongoing weekly)",
+        r"reels in a month|ongoing weekly|регулярно публиковать|ведение и развитие|"
+        r"\d+(?:\s*[-–]\s*\d+)?\s+(?:видео|ролик\w*|пост\w*)\s+в месяц)",
         text,
         re.I,
     ):

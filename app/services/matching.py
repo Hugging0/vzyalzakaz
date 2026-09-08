@@ -13,7 +13,7 @@ from app.models import Opportunity, TelegramUser
 from app.schemas import MatchDimension, MatchEvidence, OpportunityFacts, UserMatchAnalysis
 from app.services.llm_client import ChatCompletionClient
 from app.services.normalizer import normalize_text
-from app.services.opportunity_terms import work_type
+from app.services.opportunity_terms import is_recurring, work_type
 from app.services.ranking import freshness_score
 from app.services.retrieval import fallback_concepts, lexical_similarity
 
@@ -101,7 +101,9 @@ class UserMatchAnalyzer:
         if profile.avoid.full_time and work_type(facts.work_type) == "full_time":
             failures.append("full_time")
         if not profile.preferred.part_time and (
-            work_type(facts.work_type) == "part_time" or facts.recurring is True
+            work_type(facts.work_type) == "part_time"
+            or facts.recurring is True
+            or is_recurring(opportunity.raw_text or opportunity.description) is True
         ):
             failures.append("recurring_work")
         if profile.avoid.daily_daytime_calls and "daytime_calls" in facts.meeting_constraints:
@@ -261,7 +263,7 @@ def deterministic_match(
         retrieval_score if retrieval_score is not None else lexical_similarity(profile_text, opportunity_text)
     )
     skill_score = (
-        45.0
+        0.0
         if not requested
         else _clamp((len(direct_keys) + len(transferable_concepts) * 0.65) / len(requested) * 100)
     )
