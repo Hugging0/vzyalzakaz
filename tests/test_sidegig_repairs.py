@@ -140,7 +140,8 @@ async def test_backfill_includes_quiet_source_beyond_latest_200(settings, profil
 
 
 @pytest.mark.asyncio
-async def test_telegram_checkpoint_retains_failed_message_across_restart(settings):
+@pytest.mark.parametrize("interruption", ["failure", "time_budget"])
+async def test_telegram_checkpoint_retains_failed_message_across_restart(settings, monkeypatch, interruption):
     engine = make_engine(settings.database_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as c:
@@ -167,6 +168,10 @@ async def test_telegram_checkpoint_retains_failed_message_across_restart(setting
     collector.session_factory = factory
     collector.client = Client()
     collector._process_message = AsyncMock(side_effect=[1, RuntimeError("temporary")])
+    if interruption == "time_budget":
+        ticks = iter([0, 31, 40, 40, 40])
+        monkeypatch.setattr("app.telegram.collector.monotonic", lambda: next(ticks))
+        collector._process_message = AsyncMock(return_value=1)
     await collector._poll_source(None, source)
     async with factory() as session:
         assert (await session.get(CollectorCheckpoint, "tg")).last_message_id == 11

@@ -140,6 +140,7 @@ class AppSettings(BaseSettings):
     telegram_proxy_port: int = 1080
     telegram_proxy_username: str | None = None
     telegram_proxy_password: str | None = None
+    telegram_poll_budget_seconds: int = Field(default=30, ge=1, le=300)
     telegram_poll_interval: int = Field(default=180, ge=30)
     telegram_poll_batch_size: int = Field(default=100, ge=1, le=500)
     telegram_bot_token: str | None = None

@@ -5,6 +5,7 @@ import logging
 import re
 from contextlib import suppress
 from datetime import UTC, datetime
+from time import monotonic
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -33,7 +34,10 @@ class TelegramCollector:
         notifier=None,
     ):
         self.settings = settings
-        self.sources = [s for s in sources if s.type == "telegram" and s.enabled]
+        self.sources = sorted(
+            [s for s in sources if s.type == "telegram" and s.enabled],
+            key=lambda s: (s.language != "ru", s.apply_mode != "draft_only"),
+        )
         self.session_factory = session_factory
         self.pipeline = pipeline
         self.notifier = notifier
@@ -143,6 +147,7 @@ class TelegramCollector:
                 messages.sort(key=lambda message: message.id)
                 run.fetched = len(messages)
                 run.created = 0
+                deadline = monotonic() + self.settings.telegram_poll_budget_seconds
                 for message in messages:
                     if message.message:
                         run.created += await self._process_message(message, source)
@@ -150,6 +155,8 @@ class TelegramCollector:
                     checkpoint.last_message_id = message.id
                     checkpoint.updated_at = datetime.now(UTC)
                     await session.commit()
+                    if monotonic() >= deadline:
+                        break  # Let other channels progress before resuming this backlog.
                 self.last_success_at = datetime.now(UTC)
                 self.last_error = None
             except Exception as exc:
