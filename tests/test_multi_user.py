@@ -38,6 +38,8 @@ async def test_registration_is_idempotent_and_profiles_are_isolated(settings, pr
 
 @pytest.mark.asyncio
 async def test_personal_matches_do_not_leak_between_users(settings, profile):
+    # This test isolates persistence/scoring; the guard has separate integration coverage.
+    settings.matching_compatibility_enabled = False
     engine = make_engine(settings.database_url)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as connection:
@@ -94,6 +96,8 @@ async def test_personal_matches_do_not_leak_between_users(settings, profile):
 
 @pytest.mark.asyncio
 async def test_profile_change_changes_personal_score_not_global_facts(settings, profile):
+    # This test isolates persistence/scoring; the guard has separate integration coverage.
+    settings.matching_compatibility_enabled = False
     engine = make_engine(settings.database_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as connection:

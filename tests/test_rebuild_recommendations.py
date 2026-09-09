@@ -21,7 +21,11 @@ from app.rebuild_recommendations import rebuild_recommendations
 async def test_rebuild_ignores_onboarding_limit(settings, profile, tmp_path):
     database_url = f"sqlite+aiosqlite:///{tmp_path / 'rebuild.db'}"
     local_settings = settings.model_copy(
-        update={"database_url": database_url, "onboarding_backfill_limit": 1}
+        update={
+            "database_url": database_url,
+            "onboarding_backfill_limit": 1,
+            "matching_compatibility_enabled": False,
+        }
     )
     engine = make_engine(database_url)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -124,5 +128,5 @@ async def test_rebuild_preserves_historical_status_and_proposal(settings, profil
     assert counts["historical_matches_refreshed"] == 1
     assert match.status == OpportunityStatus.CONTACTED
     assert match.proposal == "Stored proposal"
-    assert match.ranking_version == "hybrid-v3"
+    assert match.ranking_version == "hybrid-v4"
     await verification_engine.dispose()

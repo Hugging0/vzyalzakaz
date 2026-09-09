@@ -18,7 +18,7 @@ from app.services.ranking import freshness_score
 from app.services.retrieval import fallback_concepts, lexical_similarity
 
 logger = logging.getLogger(__name__)
-RANKING_VERSION = "hybrid-v3"
+RANKING_VERSION = "hybrid-v4"
 
 
 @dataclass(frozen=True, slots=True)
@@ -250,7 +250,9 @@ def deterministic_match(
     secondary_keys = {_key(value): value for value in secondary}
     direct_keys = set(requested_by_key) & (set(primary_keys) | set(secondary_keys))
     requested_concepts = fallback_concepts(" ".join([facts.title, *requested, *facts.deliverables]))
-    profile_concepts = fallback_concepts(" ".join([*primary, *secondary, profile.candidate.about]))
+    # Free-form biography includes negations and descriptions of technical inputs
+    # (e.g. processing text), neither of which establishes a professional skill.
+    profile_concepts = fallback_concepts(" ".join([*primary, *secondary]))
     transferable_concepts = sorted(
         (requested_concepts & profile_concepts) - fallback_concepts(" ".join(direct_keys))
     )
@@ -267,7 +269,8 @@ def deterministic_match(
     skill_score = (
         0.0
         if not requested
-        else _clamp((len(direct_keys) + len(transferable_concepts) * 0.65) / len(requested) * 100)
+        # Transferable domains support retrieval/explanations, not exact skill coverage.
+        else _clamp(len(direct_keys) / len(requested_by_key) * 100)
     )
 
     portfolio_scores = [

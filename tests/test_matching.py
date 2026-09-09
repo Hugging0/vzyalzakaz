@@ -72,7 +72,7 @@ def test_explanations_reference_source_or_profile_facts(profile):
 
 
 def test_ranking_policy_is_versioned_and_normalized():
-    assert RANKING_POLICY.version == "hybrid-v3"
+    assert RANKING_POLICY.version == "hybrid-v4"
     assert sum(RANKING_POLICY.weights.values()) == pytest.approx(1)
 
 
@@ -121,3 +121,50 @@ async def test_llm_rerank_outage_keeps_deterministic_analysis(settings, profile)
 
     assert not analysis.reranked
     assert analysis.rank_score > 0
+
+
+@pytest.mark.parametrize(
+    "about",
+    [
+        "Обрабатываю тексты через Python. Не интересуют продажи и маркетинг.",
+        "Разрабатываю API для текстов и контента. Не интересует маркетинг.",
+    ],
+)
+def test_zen_publishing_cannot_inherit_skills_from_python_biography(profile, about):
+    profile.candidate.skills = ["Python", "FastAPI", "PostgreSQL", "AI Agents"]
+    profile.candidate.secondary_skills = []
+    profile.candidate.about = about
+    task = facts(
+        title="Дзен: публиковать контент — без опыта, гибкий график",
+        skills=["copy text"],
+        technologies=[],
+        deliverables=[],
+    )
+    analysis = deterministic_match(opportunity(), task, profile, [], retrieval_score=37.52)
+    assert analysis.feature_vector["skill_overlap"] == 0
+    assert analysis.transferable_capabilities == []
+    assert analysis.matched_capabilities == []
+
+
+def test_zen_python_automation_retains_real_skill_match(profile):
+    profile.candidate.skills = ["Python"]
+    profile.candidate.secondary_skills = []
+    task = facts(
+        title="Написать Python-скрипт публикации в Дзен",
+        skills=["Python"],
+        technologies=[],
+        deliverables=["Скрипт автоматизации"],
+    )
+    analysis = deterministic_match(opportunity(), task, profile, [])
+    assert analysis.feature_vector["skill_overlap"] == 100
+    assert analysis.matched_capabilities == ["Python"]
+
+
+def test_transfer_domains_cannot_multiply_one_requested_skill(profile):
+    profile.candidate.skills = ["SMM", "copywriting"]
+    task = facts(
+        title="Контент маркетинг copywriting", skills=["copy text"], technologies=[], deliverables=[]
+    )
+    analysis = deterministic_match(opportunity(), task, profile, [])
+    assert analysis.transferable_capabilities
+    assert analysis.feature_vector["skill_overlap"] == 0

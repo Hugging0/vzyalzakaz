@@ -34,6 +34,7 @@ def decision(key, title, verdict="unsuitable", profile_quote="React"):
         "id": key,
         "verdict": verdict,
         "confidence": 0.95,
+        "occupation_match": "yes" if verdict == "suitable" else "no",
         "reason": "The task requires selling, not web development.",
         "source_quote": title,
         "profile_quote": profile_quote,
@@ -86,7 +87,7 @@ async def test_cache_invalidation_and_unrelated_task_exclusion(settings, profile
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure", ["invented_quote", "missing_id", "provider"])
-async def test_unverified_rejections_are_not_applied_or_cached(settings, profile, failure):
+async def test_unverified_candidates_are_deferred_without_cached_rejection(settings, profile, failure):
     engine = make_engine(settings.database_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as c:
@@ -109,7 +110,7 @@ async def test_unverified_rejections_are_not_applied_or_cached(settings, profile
         user = TelegramUser(telegram_user_id=903, profile=profile.model_dump(), portfolio=[])
         session.add_all([user, item.opportunity])
         await session.flush()
-        assert await guard.filter(session, user, profile, [], [item]) == [item]
+        assert await guard.filter(session, user, profile, [], [item]) == []
         assert await session.scalar(select(func.count()).select_from(CompatibilityCache)) == 0
     await engine.dispose()
 
@@ -187,5 +188,28 @@ async def test_timeout_preserves_completed_batches(settings, profile):
         session.add_all([user, bad.opportunity, slow.opportunity])
         await session.flush()
         kept = await guard.filter(session, user, profile, [], [bad, slow])
-        assert kept == [slow]
+        assert kept == []
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_provider_recovery_retries_deferred_candidate(settings, profile):
+    engine = make_engine(settings.database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as c:
+        await c.run_sync(Base.metadata.create_all)
+    profile.candidate.skills = ["React"]
+    item = candidate(920, "React landing page")
+    client = SimpleNamespace(available=False, complete=AsyncMock())
+    guard = CompatibilityGuard(settings, client)
+    async with factory() as session:
+        user = TelegramUser(telegram_user_id=920, profile=profile.model_dump(), portfolio=[])
+        session.add_all([user, item.opportunity])
+        await session.flush()
+        assert await guard.filter(session, user, profile, [], [item]) == []
+        client.available = True
+        client.complete.return_value = {
+            "decisions": [decision(str(item.opportunity.id), "React landing page", verdict="suitable")]
+        }
+        assert await guard.filter(session, user, profile, [], [item]) == [item]
     await engine.dispose()

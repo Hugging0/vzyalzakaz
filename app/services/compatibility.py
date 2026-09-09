@@ -18,7 +18,7 @@ from app.services.llm_client import ChatCompletionClient
 from app.services.opportunity_terms import is_recurring
 
 logger = logging.getLogger(__name__)
-VERSION = "compatibility-v1"
+VERSION = "compatibility-v2"
 
 
 class Decision(BaseModel):
@@ -37,8 +37,6 @@ def normalized(value):
 
 
 def grounded(decision, source_text, profile_text):
-    if decision.verdict != "unsuitable":
-        return True
     return (
         bool(decision.source_quote.strip())
         and bool(decision.profile_quote.strip())
@@ -54,8 +52,11 @@ class CompatibilityGuard:
         self._semaphore = asyncio.Semaphore(2)
 
     async def filter(self, session, user, profile, portfolio, candidates):
-        if not candidates or not self.settings.matching_compatibility_enabled or not self.client.available:
+        if not candidates or not self.settings.matching_compatibility_enabled:
             return candidates
+        if not self.client.available:
+            logger.warning("compatibility_guard_unavailable candidates=%d", len(candidates))
+            return []
         profile_text = json.dumps(
             {
                 "profile": profile.model_dump(mode="json"),
@@ -133,7 +134,9 @@ class CompatibilityGuard:
             for decision in reply:
                 key = decision.id
                 decisions[key] = decision
-                if decision.verdict == "unknown":
+                if decision.verdict == "unknown" or (
+                    decision.verdict in {"suitable", "compromise"} and decision.occupation_match != "yes"
+                ):
                     continue  # Retry uncertain/provider-failed assessments on a later request.
                 statement = insert(CompatibilityCache).values(
                     user_id=user.id,
@@ -181,7 +184,16 @@ class CompatibilityGuard:
             len(rejected),
             len(candidates) - len(decisions),
         )
-        return [c for c in candidates if str(c.opportunity.id) not in rejected]
+        # A timeout/invalid reply is pending verification, never a positive fit.
+        return [
+            c
+            for c in candidates
+            if (d := decisions.get(str(c.opportunity.id))) is not None
+            and str(c.opportunity.id) not in rejected
+            and d.verdict in {"suitable", "compromise"}
+            and d.occupation_match == "yes"
+            and grounded(d, source_texts[str(c.opportunity.id)], profile_text)
+        ]
 
     async def _batch(self, profile_text, source_texts, retry=True):
         prompt = """Check whether each ACTUAL paid task is feasible for this person's side-gig search.
@@ -189,6 +201,10 @@ Do not score generic semantic similarity. Read the task, mandatory requirements,
 A developer cannot become a salesperson because a product is software; SMM is not QA; editing video is not
 on-location filming or building marketing funnels. Contact links, channel advertising footers, and generic
 mentions of AI/Telegram/content are not professional requirements or proof of skill fit.
+A Python developer processing text is not a copywriter. Publishing ready-made posts and replying to
+comments manually is content management, even if no experience is required. Building a Python script
+that automates publishing IS development. Judge the paid deliverable, not the platform name.
+Read negations: "not interested in marketing" is an exclusion, never marketing experience.
 
 Reject clear conflicts in occupation, mandatory language, required experience, on-site work, schedule, or
 ongoing employment when the profile excludes it.
@@ -214,8 +230,9 @@ occupation_match asks whether the ACTUAL paid deliverable belongs to the person'
 Do not infer that a web developer can do print design, or that generic social-media skills include complex
 After Effects motion design. Unknown acronyms alone do not establish a fit. Use no for a clearly different
 profession; unclear for a task whose meaning cannot be established. For required_ongoing_work=true quote
-its recurrence in source_quote and the ongoing-work preference in profile_quote. For unsuitable, both
-quotes are mandatory verbatim evidence. EACH quote must be ONE continuous fragment of at most 120 characters.
+its recurrence in source_quote and the ongoing-work preference in profile_quote. For EVERY verdict, both
+quotes are mandatory verbatim evidence of the assessed task and actual professional scope.
+EACH quote must be ONE continuous fragment of at most 120 characters.
 Do NOT join the name and about fields. Keep reason under 160 characters. Do not quote entire paragraphs.
 A quote may be a skill or phrase inside the profile JSON, not an
 invented description. Do not copy JSON escape characters instead of actual text. Unknown if evidence is
