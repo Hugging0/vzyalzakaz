@@ -88,15 +88,22 @@ def language_key(value: str) -> str:
 
 
 def explicit_english_requirement(text: str) -> bool:
-    for line in text.splitlines():
-        if re.search(r"не\s*(?:обязател|требуется)|not required|optional|не нужен", line, re.I):
+    pattern = (
+        r"(?:английск\w*|english)[\s:—–-]*"
+        r"(?:(?:язык|уровень|уровня|на уровне|от|не ниже)\s+)?[abc][12]\b|"
+        r"(?:знать|знание|владение)\s+английск\w*|(?:fluent|proficient)\s+(?:in\s+)?english"
+    )
+    for match in re.finditer(pattern, text, re.I):
+        prefix = text[max(0, match.start() - 30) : match.start()]
+        suffix = text[match.end() : match.end() + 60]
+        if re.search(r"(?:не требуется|не нужно|не обязательно)\s*$", prefix, re.I):
             continue
-        if re.search(
-            r"(?:английск\w*|english)[\s:—–-]*"
-            r"(?:(?:язык|уровень|уровня|на уровне|от|не ниже)\s+)?[abc][12]\b|"
-            r"(?:знать|знание|владение)\s+английск\w*|(?:fluent|proficient)\s+(?:in\s+)?english",
-            line,
+        if re.match(
+            r"[\s,:—–-]*(?:не\s*(?:обязател|требуется|нужен)|(?:is\s+)?(?:not required|optional)|"
+            r"будет (?:большим )?плюсом|желател)",
+            suffix,
             re.I,
         ):
-            return True
+            continue
+        return True
     return False

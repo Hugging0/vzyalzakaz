@@ -224,3 +224,12 @@ def test_optional_english_not_a_requirement(settings, profile):
 
     assert not explicit_english_requirement("Английский B2 необязателен")
     assert not explicit_english_requirement("English B2 optional")
+
+
+def test_optional_portfolio_does_not_cancel_mandatory_language():
+    from app.services.opportunity_terms import explicit_english_requirement
+
+    assert explicit_english_requirement("English B2 required; portfolio not required")
+    assert explicit_english_requirement("Английский B2 обязателен, опыт не требуется")
+    assert not explicit_english_requirement("Знание английского будет большим плюсом")
+    assert not explicit_english_requirement("Не требуется знание английского")
