@@ -22,7 +22,7 @@ from app.services.content_classifier import (
     ContentClassification,
     is_demand_category,
 )
-from app.services.matching import UserMatchAnalyzer
+from app.services.matching import UserMatchAnalyzer, deterministic_match
 from app.services.opportunity_facts import FACTS_VERSION, OpportunityFactExtractor, repair_legacy_facts
 from app.services.portfolio import select_portfolio
 from app.services.retrieval import CandidateRetriever, RetrievalCandidate
@@ -198,7 +198,7 @@ class RecommendationService:
         )
         if not retrieved or retrieved[0].score < self.settings.matching_retrieval_min_score:
             return None
-        retrieved = await self.compatibility.filter(session, user, profile, portfolio, retrieved)
+        retrieved = await self._compatible_candidates(session, user, profile, portfolio, retrieved)
         if not retrieved:
             await session.commit()
             return None
@@ -269,7 +269,7 @@ class RecommendationService:
             top_k=self.settings.matching_retrieval_top_k,
             max_new_embeddings=self.settings.matching_embedding_miss_limit,
         )
-        retrieved = await self.compatibility.filter(session, user, profile, portfolio, retrieved)
+        retrieved = await self._compatible_candidates(session, user, profile, portfolio, retrieved)
         matches: list[tuple[UserOpportunity, Opportunity]] = []
         persisted_count = 0
         for candidate in retrieved:
@@ -329,6 +329,27 @@ class RecommendationService:
             (perf_counter() - started) * 1000,
         )
         return matches
+
+    async def _compatible_candidates(self, session, user, profile, portfolio, candidates):
+        # Do not pay for checking items that would never clear the display threshold.
+        viable = [
+            candidate
+            for candidate in candidates
+            if (
+                candidate.score >= self.settings.matching_retrieval_min_score
+                and deterministic_match(
+                    candidate.opportunity,
+                    candidate.facts,
+                    profile,
+                    portfolio,
+                    retrieval_score=candidate.score,
+                    embedding_score=candidate.embedding_score,
+                    retrieval_fallback_used=candidate.fallback_used,
+                ).rank_score
+                >= self.settings.matching_persist_score
+            )
+        ]
+        return await self.compatibility.filter(session, user, profile, portfolio, viable)
 
     async def _rank_candidate(
         self,
