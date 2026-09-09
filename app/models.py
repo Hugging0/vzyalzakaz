@@ -149,9 +149,7 @@ class Opportunity(Base):
         back_populates="opportunity", cascade="all, delete-orphan"
     )
 
-    __table_args__ = (
-        UniqueConstraint("source", "external_id", name="uq_opportunity_source_external"),
-    )
+    __table_args__ = (UniqueConstraint("source", "external_id", name="uq_opportunity_source_external"),)
 
 
 class SourceOccurrence(Base):
@@ -282,9 +280,7 @@ class SemanticRepresentation(Base):
     model: Mapped[str] = mapped_column(String(120))
     dimensions: Mapped[int] = mapped_column(Integer)
     vector: Mapped[list] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
@@ -330,9 +326,7 @@ class WebLoginTicket(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 
 class WebSession(Base):
@@ -344,12 +338,8 @@ class WebSession(Base):
     )
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
-    )
-    last_seen_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 
 class ExtensionLinkTicket(Base):
@@ -362,9 +352,7 @@ class ExtensionLinkTicket(Base):
     code_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 
 class ExtensionInstallation(Base):
@@ -383,16 +371,12 @@ class ExtensionInstallation(Base):
     last_error_code: Mapped[str | None] = mapped_column(String(60))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
     )
 
-    __table_args__ = (
-        UniqueConstraint("user_id", "installation_id", name="uq_extension_user_installation"),
-    )
+    __table_args__ = (UniqueConstraint("user_id", "installation_id", name="uq_extension_user_installation"),)
 
 
 class ApplicationCommand(Base):
@@ -485,3 +469,16 @@ class Payment(Base):
         default=lambda: datetime.now(UTC),
         onupdate=lambda: datetime.now(UTC),
     )
+
+
+class CompatibilityCache(Base):
+    __tablename__ = "compatibility_cache"
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("telegram_users.id", ondelete="CASCADE"), primary_key=True
+    )
+    opportunity_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("opportunities.id", ondelete="CASCADE"), primary_key=True
+    )
+    input_hash: Mapped[str] = mapped_column(String(64))
+    decision: Mapped[dict] = mapped_column(JSON)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))

@@ -28,12 +28,11 @@ def test_sqlite_upgrade_from_0008_removes_legacy_and_adds_semantic_cache(tmp_pat
     )
     with sqlite3.connect(database) as connection:
         after = {row[1] for row in connection.execute("PRAGMA table_info(opportunities)")}
-        tables = {
-            row[0]
-            for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
-        }
+        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
 
     assert "prefilter_score" not in after
     assert "final_score" not in after
     assert "semantic_representations" in tables
     assert "collector_checkpoints" in tables
+
+    assert "compatibility_cache" in tables

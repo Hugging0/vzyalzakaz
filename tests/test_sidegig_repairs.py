@@ -197,3 +197,30 @@ def test_recurring_copy_overrides_unknown_legacy_fact(settings, profile, text):
     user = TelegramUser(telegram_user_id=1, profile=profile.model_dump(), portfolio=[])
     result = UserMatchAnalyzer(settings).cheap_eligibility(user, opportunity, OpportunityFacts(), profile)
     assert "recurring_work" in result.reasons
+
+
+@pytest.mark.parametrize(
+    "text", ["Монтажер, английский B2", "Обязательно: знать английский", "Fluent English"]
+)
+def test_explicit_english_survives_missing_legacy_facts(settings, profile, text):
+    profile.candidate.languages = ["русский"]
+    user = TelegramUser(telegram_user_id=1, profile=profile.model_dump(), portfolio=[])
+    opportunity = row(1)
+    opportunity.raw_text = text
+    facts = OpportunityFacts()
+    assert (
+        "language_impossible"
+        in UserMatchAnalyzer(settings).cheap_eligibility(user, opportunity, facts, profile).reasons
+    )
+    profile.candidate.languages = ["English"]
+    assert (
+        "language_impossible"
+        not in UserMatchAnalyzer(settings).cheap_eligibility(user, opportunity, facts, profile).reasons
+    )
+
+
+def test_optional_english_not_a_requirement(settings, profile):
+    from app.services.opportunity_terms import explicit_english_requirement
+
+    assert not explicit_english_requirement("Английский B2 необязателен")
+    assert not explicit_english_requirement("English B2 optional")

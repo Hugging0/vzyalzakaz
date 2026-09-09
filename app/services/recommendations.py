@@ -16,6 +16,7 @@ from app.models import (
     UserOpportunity,
 )
 from app.schemas import OpportunityFacts, RawOpportunity, UserMatchAnalysis
+from app.services.compatibility import CompatibilityGuard
 from app.services.content_classifier import (
     DEMAND_CATEGORIES,
     ContentClassification,
@@ -45,6 +46,7 @@ class RecommendationService:
         self.default_portfolio = default_portfolio
         self.fact_extractor = OpportunityFactExtractor(settings)
         self.matcher = UserMatchAnalyzer(settings)
+        self.compatibility = CompatibilityGuard(settings)
         self.retriever = retriever or CandidateRetriever(settings)
 
     async def register_user(self, session: AsyncSession, telegram_data: dict) -> TelegramUser:
@@ -196,6 +198,10 @@ class RecommendationService:
         )
         if not retrieved or retrieved[0].score < self.settings.matching_retrieval_min_score:
             return None
+        retrieved = await self.compatibility.filter(session, user, profile, portfolio, retrieved)
+        if not retrieved:
+            await session.commit()
+            return None
         match = await self._rank_candidate(
             session,
             user,
@@ -263,6 +269,7 @@ class RecommendationService:
             top_k=self.settings.matching_retrieval_top_k,
             max_new_embeddings=self.settings.matching_embedding_miss_limit,
         )
+        retrieved = await self.compatibility.filter(session, user, profile, portfolio, retrieved)
         matches: list[tuple[UserOpportunity, Opportunity]] = []
         persisted_count = 0
         for candidate in retrieved:

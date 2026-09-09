@@ -13,7 +13,7 @@ from app.models import Opportunity, TelegramUser
 from app.schemas import MatchDimension, MatchEvidence, OpportunityFacts, UserMatchAnalysis
 from app.services.llm_client import ChatCompletionClient
 from app.services.normalizer import normalize_text
-from app.services.opportunity_terms import is_recurring, work_type
+from app.services.opportunity_terms import explicit_english_requirement, is_recurring, language_key, work_type
 from app.services.ranking import freshness_score
 from app.services.retrieval import fallback_concepts, lexical_similarity
 
@@ -119,14 +119,16 @@ class UserMatchAnalyzer:
             failures.append("budget_below_floor")
 
         candidate_languages = {
-            normalize_text(value).split("-")[0]
-            for value in profile.candidate.languages
-            if normalize_text(value)
+            language_key(value) for value in profile.candidate.languages if normalize_text(value)
         }
-        required_languages = {
-            normalize_text(value).split("-")[0] for value in facts.languages if normalize_text(value)
-        }
-        if required_languages and candidate_languages.isdisjoint(required_languages):
+        required_languages = {language_key(value) for value in facts.languages if normalize_text(value)}
+        if (
+            candidate_languages
+            and "en" not in candidate_languages
+            and explicit_english_requirement(opportunity.raw_text or opportunity.description)
+        ):
+            failures.append("language_impossible")
+        if candidate_languages and required_languages and candidate_languages.isdisjoint(required_languages):
             failures.append("language_impossible")
 
         project_types = {normalize_text(value) for value in ui.get("project_types", []) if value}

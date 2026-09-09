@@ -150,6 +150,9 @@ class AppSettings(BaseSettings):
     registration_invite_code: str | None = None
     max_users: int = 100
     onboarding_backfill_limit: int = 200
+    matching_compatibility_enabled: bool = True
+    matching_compatibility_timeout_seconds: int = Field(default=45, ge=1, le=120)
+    matching_compatibility_batch_size: int = Field(default=8, ge=1, le=12)
     matching_corpus_days: int = Field(default=14, ge=1, le=90)
     matching_embedding_miss_limit: int = Field(default=32, ge=0, le=256)
     semantic_index_batch_size: int = Field(default=64, ge=1, le=256)

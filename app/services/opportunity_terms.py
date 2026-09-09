@@ -47,9 +47,11 @@ def budget_unit(text: str, employment_type: str | None = None) -> str:
 def is_recurring(text: str) -> bool | None:
     if re.search(
         r"(?:кажд\w* (?:день|недел|месяц)|ежедневн|еженедельн|ежемесячн|"
-        r"на постоянной основе|долгосрочн|per week|each week|every week|"
+        r"на постоянной основе|постоянного сотрудничества|останется с нами надолго|"
+        r"график\s*5/2|долгосрочн|per week|each week|every week|"
         r"reels in a month|ongoing weekly|регулярно публиковать|ведение и развитие|"
-        r"\d+(?:\s*[-–]\s*\d+)?\s+(?:видео|ролик\w*|пост\w*)\s+в месяц)",
+        r"\d+(?:\s*[-–]\s*\d+)?\s+(?:видео|ролик\w*|пост\w*|публикац\w*)"
+        r"\s+в (?:месяц|день|недел\w*))",
         text,
         re.I,
     ):
@@ -72,3 +74,29 @@ def alternative_tools(text: str) -> list[list[str]]:
         if len(found) > 1:
             result.append(found)
     return result
+
+
+def language_key(value: str) -> str:
+    text = value.strip().casefold()
+    for key, pattern in {
+        "en": r"^(?:en(?:glish)?|англ(?:ийск\w*)?)(?:\b|[_-])",
+        "ru": r"^(?:ru(?:ssian)?|рус(?:ский)?)(?:\b|[_-])",
+    }.items():
+        if re.search(pattern, text):
+            return key
+    return text.split("-")[0]
+
+
+def explicit_english_requirement(text: str) -> bool:
+    for line in text.splitlines():
+        if re.search(r"не\s*(?:обязател|требуется)|not required|optional|не нужен", line, re.I):
+            continue
+        if re.search(
+            r"(?:английск\w*|english)[\s:—–-]*"
+            r"(?:(?:язык|уровень|уровня|на уровне|от|не ниже)\s+)?[abc][12]\b|"
+            r"(?:знать|знание|владение)\s+английск\w*|(?:fluent|proficient)\s+(?:in\s+)?english",
+            line,
+            re.I,
+        ):
+            return True
+    return False
