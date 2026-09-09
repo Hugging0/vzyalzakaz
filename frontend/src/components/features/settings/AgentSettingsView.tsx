@@ -25,8 +25,8 @@ export function AgentSettingsView({ profile }: { profile: Profile }) {
   const [form, setForm] = useState({
     threshold: profile.matchThreshold,
     minimumBudget: String(profile.minimumBudget || ""),
+    hourlyRate: String(profile.hourlyRate || ""),
     excludedKeywords: profile.excludedKeywords.join(", "),
-    projectTypes: profile.projectTypes.join(", "),
     preferredSources: profile.preferredSources,
     automationLevel: profile.automationLevel,
     notifications: profile.notifications,
@@ -40,7 +40,7 @@ export function AgentSettingsView({ profile }: { profile: Profile }) {
       matchThreshold: form.threshold,
       minimumBudget: Number(form.minimumBudget || 0),
       excludedKeywords: values(form.excludedKeywords),
-      projectTypes: values(form.projectTypes),
+      hourlyRate: Number(form.hourlyRate || 0),
       preferredSources: form.preferredSources,
       automationLevel: form.automationLevel,
       notifications: form.notifications,
@@ -57,7 +57,7 @@ export function AgentSettingsView({ profile }: { profile: Profile }) {
   return (
     <>
       <AppPageHeader title="Настройки агента" description="Условия поиска, уведомления и допустимая степень автоматизации." />
-      <div className="settings-layout">
+      <form className="settings-layout" onSubmit={(event) => { event.preventDefault(); save.mutate(); }}>
         <div className="stack">
           <AppCard tone={profile.isActive ? "mint" : "yellow"}>
             <div className="split">
@@ -71,13 +71,14 @@ export function AgentSettingsView({ profile }: { profile: Profile }) {
             </div>
           </AppCard>
           <AppCard>
-            <h2>Что искать</h2>
+            <h2>Условия подработки</h2>
+            <p className="muted">Оставьте сумму пустой, если ограничения нет. Заказы без указанного бюджета тоже участвуют в подборе.</p>
             <div className="form-grid">
-              <AppField label="Минимальный бюджет, ₽" htmlFor="settings-budget">
-                <input id="settings-budget" className="app-input" type="number" min="0" value={form.minimumBudget} onChange={(event) => setForm({ ...form, minimumBudget: event.target.value })} />
+              <AppField label="От какой суммы за задачу, ₽" htmlFor="settings-budget">
+                <input id="settings-budget" className="app-input" type="number" inputMode="numeric" min="0" max="100000000" step="1" value={form.minimumBudget} onChange={(event) => setForm({ ...form, minimumBudget: event.target.value })} />
               </AppField>
-              <AppField label="Типы проектов" htmlFor="settings-types" hint="Например: проект, частичная занятость, контракт">
-                <input id="settings-types" className="app-input" value={form.projectTypes} onChange={(event) => setForm({ ...form, projectTypes: event.target.value })} />
+              <AppField label="Желаемая ставка, ₽/час" htmlFor="settings-rate">
+                <input id="settings-rate" className="app-input" type="number" inputMode="numeric" min="0" max="1000000" step="1" value={form.hourlyRate} onChange={(event) => setForm({ ...form, hourlyRate: event.target.value })} />
               </AppField>
             </div>
             <AppField label="Не показывать" htmlFor="settings-excluded" hint="Слова и темы через запятую">
@@ -116,11 +117,11 @@ export function AgentSettingsView({ profile }: { profile: Profile }) {
               </div>
             )}
           </AppCard>
-          <AppButton disabled={save.isPending} onClick={() => save.mutate()}>{save.isPending ? "Сохраняем" : "Сохранить настройки"}</AppButton>
+          <AppButton type="submit" disabled={save.isPending}>{save.isPending ? "Сохраняем" : "Сохранить настройки"}</AppButton>
           {save.isSuccess && <AppNotice tone="success">Настройки сохранены.</AppNotice>}
           {save.isError && <AppNotice tone="danger">Настройки не сохранены. Повторите попытку.</AppNotice>}
         </aside>
-      </div>
+      </form>
     </>
   );
 }

@@ -15,17 +15,17 @@ function freshness(publishedAt: string | null): string {
   return new Intl.DateTimeFormat("ru", { day: "numeric", month: "short" }).format(new Date(publishedAt));
 }
 
-export function OrderListItem({ lead }: { lead: Lead }) {
+export function OrderListItem({ lead, returnTo }: { lead: Lead; returnTo?: string }) {
   return (
     <AppCard className="order-row">
-      <div className="order-score"><strong>{lead.matchScore}/100</strong><span>{lead.strengthLabel}</span></div>
       <div className="order-main">
         <div className="order-meta"><AppBadge>{freshness(lead.publishedAt)}</AppBadge><span>{lead.source}</span><span>{lead.budgetLabel}</span></div>
         <h2>{lead.title}</h2>
         <p>{lead.recommendationReasons[0]?.text ?? lead.fitReasons[0]}</p>
-        <div className="order-status"><span>{leadStatusLabel[lead.status]}</span>{lead.applyMode === "api_allowed" && <AppBadge tone="mint">API</AppBadge>}</div>
+        {lead.checks[0] && <p className="order-caution">{lead.checks[0].text}</p>}
+        <div className="order-status"><span>{leadStatusLabel[lead.status]}</span></div>
       </div>
-      <div className="order-actions"><AppLinkButton href={`/app/orders/${lead.id}`}>Открыть заказ</AppLinkButton>{lead.sourceUrl && <AppIconLink href={lead.sourceUrl} label="Открыть источник"><ExternalLink size={19} /></AppIconLink>}</div>
+      <div className="order-actions"><AppLinkButton href={`/app/orders/${lead.id}${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ""}`}>Открыть заказ</AppLinkButton>{lead.sourceUrl && <AppIconLink href={lead.sourceUrl} label="Открыть источник"><ExternalLink size={19} /></AppIconLink>}</div>
     </AppCard>
   );
 }
